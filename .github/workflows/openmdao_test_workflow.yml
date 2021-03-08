@@ -50,8 +50,8 @@ jobs:
             echo "Installing PETSc";
             echo "=============================================================";
 
-            conda env update -n base -c anaconda mpi4py --yes;
-            conda env update -n base -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py --yes;
+            conda env update -c anaconda mpi4py --yes;
+            conda env update -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py --yes;
           fi
 
           echo "=============================================================";
