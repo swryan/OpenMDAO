@@ -1476,8 +1476,10 @@ class TestFunctionRegistration(unittest.TestCase):
             # compute runs and just report as an error during expression evaluation.
             with self.assertRaises(Exception) as cm:
                 p.run_model()
-            self.assertEquals(cm.exception.args[0],
-                              "'comp' <class ExecComp>: Error occurred evaluating 'y = double(x) * 3.':\n'comp' <class ExecComp>: Failed to set value of 'y': could not broadcast input array from shape (10) into shape (8).")
+            self.assertEquals(cm.exception.args[0], '\n'.join([
+                "'comp' <class ExecComp>: Error occurred evaluating 'y = double(x) * 3.':",
+                "'comp' <class ExecComp>: Failed to set value of 'y': could not broadcast input array from shape (10,) into shape (8,)."
+            ]))
 
     def test_shape_by_conn_bug_has_diag_partials_bug(self):
         # this is for a bug where has_diag_partials was being ignored when shape_by_conn
