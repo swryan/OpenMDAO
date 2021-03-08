@@ -24,7 +24,7 @@ jobs:
         PY: [3]
         NUMPY: [1]
         SCIPY: [1]
-        PETSc: []
+        PETSc: [3]
         PYOPTSPARSE: ['v2.1.5']
 
     steps:
@@ -38,18 +38,16 @@ jobs:
 
       - name: Install & test
         run: |
-          echo "PY=${{ matrix.PY }} PETSC=${{ matrix.PETSc }}"
-
           echo "=============================================================";
           echo "Create conda environment";
           echo "=============================================================";
-          source $CONDA/etc/profile.d/conda.sh
+          source $CONDA/etc/profile.d/conda.sh;
 
-          echo $CONDA/bin >> $GITHUB_PATH
+          echo $CONDA/bin >> $GITHUB_PATH;
 
           conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }} -q -y;
 
-          conda activate OpenMDAO
+          conda activate OpenMDAO;
 
           which python
 
@@ -73,26 +71,32 @@ jobs:
             ./build_pyoptsparse.sh -b "${{ matrix.PYOPTSPARSE }}";
             cd ..
 
-            export LD_LIBRARY_PATH=$HOME/ipopt/lib
+            export LD_LIBRARY_PATH=$HOME/ipopt/lib;
           fi
 
           echo "=============================================================";
           echo "Installing OpenMDAO";
           echo "=============================================================";
-          pip install .[all]
+          pip install .[all];
 
           echo "=============================================================";
           echo "Installing optional packages for testing/coverage";
           echo "=============================================================";
           pip install psutil objgraph git+https://github.com/mdolab/pyxdsm;
-          pyppeteer-install
+          pyppeteer-install;
 
           echo "=============================================================";
           echo "Test environment";
           echo "=============================================================";
-          conda list          
+          conda list;
 
           echo "=============================================================";
-          echo "Run tests";
+          echo "Run tests & make docs";
           echo "=============================================================";
+          cd openmdao/docs;
+
           testflo -n 1 openmdao --pre_announce --timeout=120 --show_skipped --coverage --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
+          
+          if [ "${{ matrix.PETSc }}" ]; then
+            make travis;
+          fi
