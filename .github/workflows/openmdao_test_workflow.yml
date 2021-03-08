@@ -22,7 +22,9 @@ jobs:
     strategy:
       matrix:
         PY: [3]
-        PETSc: ["3"]
+        NUMPY: [1]
+        SCIPY: [1]
+        PETSc: [3]
 
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
@@ -41,7 +43,16 @@ jobs:
           echo $CONDA
           echo $GITHUB_PATH
           echo $CONDA/bin >> $GITHUB_PATH
-          echo $GITHUB_PATH
+          echo $PATH
+
+          which python
+
+          echo "=============================================================";
+          echo "Create conda environment";
+          echo "=============================================================";
+          conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }}
+
+          conda activate OpenMDAO
 
           which python
 
@@ -50,8 +61,8 @@ jobs:
             echo "Installing PETSc";
             echo "=============================================================";
 
-            conda env update -c anaconda mpi4py --yes;
-            conda env update -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py --yes;
+            conda install -c anaconda mpi4py --yes;
+            conda install -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py --yes;
           fi
 
           echo "=============================================================";
@@ -68,6 +79,7 @@ jobs:
           echo "=============================================================";
           echo "Test environment";
           echo "=============================================================";
+          conda list          
           pip list
 
           echo "=============================================================";
