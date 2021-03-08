@@ -25,6 +25,7 @@ jobs:
         NUMPY: [1]
         SCIPY: [1]
         PETSc: [3]
+        PYOPTSPARSE: ['v2.1.5']
 
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
@@ -39,18 +40,12 @@ jobs:
         run: |
           echo "PY=${{ matrix.PY }} PETSC=${{ matrix.PETSc }}"
 
-          # $CONDA is an environment variable pointing to the root of the miniconda directory
-          echo $CONDA
-          echo $GITHUB_PATH
-          echo $CONDA/bin >> $GITHUB_PATH
-          echo $PATH
-
-          which python
-
           echo "=============================================================";
           echo "Create conda environment";
           echo "=============================================================";
           source $CONDA/etc/profile.d/conda.sh
+
+          echo $CONDA/bin >> $GITHUB_PATH
 
           conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }}
 
@@ -65,6 +60,20 @@ jobs:
 
             conda install -c anaconda mpi4py --yes;
             conda install -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py --yes;
+          fi
+
+          if [ "${{ matrix.PYOPTSPARSE }}" ]; then
+            echo "=============================================================";
+            echo "Installing pyoptsparse";
+            echo "=============================================================";
+            git clone -q https://github.com/OpenMDAO/build_pyoptsparse;
+
+            cd build_pyoptsparse;
+            chmod 755 ./build_pyoptsparse.sh;
+            ./build_pyoptsparse.sh -b "$PYOPTSPARSE";
+            cd ..
+
+            export LD_LIBRARY_PATH=$HOME/ipopt/lib
           fi
 
           echo "=============================================================";
@@ -82,7 +91,6 @@ jobs:
           echo "Test environment";
           echo "=============================================================";
           conda list          
-          pip list
 
           echo "=============================================================";
           echo "Run tests";

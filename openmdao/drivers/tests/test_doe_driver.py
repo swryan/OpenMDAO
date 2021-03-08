@@ -450,7 +450,7 @@ class TestDOEDriver(unittest.TestCase):
                 prob.run_driver()
             self.assertEqual(str(err.exception),
                              "Error assigning p1.x = [ 0.  0.  0.  0.]: "
-                             "could not broadcast input array from shape (4,) into shape (1,)")
+                             "could not broadcast input array from shape (4) into shape (1)")
 
     def test_uniform(self):
         prob = om.Problem()
