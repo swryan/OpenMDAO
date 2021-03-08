@@ -35,7 +35,7 @@ jobs:
 
       - name: Install & test
         run: |
-          echo "PY=$PY PETSC=$PETSc"
+          echo "PY=${{ matrix.PY }} PETSC=${{ matrix.PETSc }}"
 
           # $CONDA is an environment variable pointing to the root of the miniconda directory
           echo $CONDA
@@ -43,25 +43,29 @@ jobs:
           echo $CONDA/bin >> $GITHUB_PATH
           echo $GITHUB_PATH
 
-          if [ -n "$PETSc" ]; then
-            echo " >> Installing PETSc";
-            echo " >> ================";
+          if [ "${{ matrix.PETSc }}" ]; then
+            echo "=============================================================";
+            echo "Installing PETSc";
+            echo "=============================================================";
+
             conda install -c anaconda mpi4py --yes;
             conda install -c conda-forge petsc=$PETSc petsc4py --yes;
           fi
 
-          echo " >> Installing OpenMDAO";
-          echo " >> ===================";
+          echo "=============================================================";
+          echo "Installing OpenMDAO";
+          echo "=============================================================";
           pip install .[all]
 
-          echo " >> Installing optional packages for testing/coverage";
-          echo " >> =================================================";
+          echo "=============================================================";
+          echo "Installing optional packages for testing/coverage";
+          echo "=============================================================";
           pip install psutil objgraph git+https://github.com/mdolab/pyxdsm;
           pyppeteer-install
 
-          conda list
           pip list
 
-          echo " >> Run tests";
-          echo " >> =========";
+          echo "=============================================================";
+          echo "Run tests";
+          echo "=============================================================";
           testflo -n 1 openmdao --timeout=120 --show_skipped --coverage  --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
