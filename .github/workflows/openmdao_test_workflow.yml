@@ -22,7 +22,7 @@ jobs:
     strategy:
       matrix:
         PY: [3]
-        PETSc: [3]
+        PETSc: ["3"]
 
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
@@ -35,10 +35,13 @@ jobs:
 
       - name: Install & test
         run: |
-          echo "$PY" "$PETSc"
+          echo "PY=$PY PETSC=$PETSc"
 
           # $CONDA is an environment variable pointing to the root of the miniconda directory
+          echo $CONDA
+          echo $GITHUB_PATH
           echo $CONDA/bin >> $GITHUB_PATH
+          echo $GITHUB_PATH
 
           if [ -n "$PETSc" ]; then
             echo " >> Installing PETSc";
@@ -55,6 +58,9 @@ jobs:
           echo " >> =================================================";
           pip install psutil objgraph git+https://github.com/mdolab/pyxdsm;
           pyppeteer-install
+
+          conda list
+          pip list
 
           echo " >> Run tests";
           echo " >> =========";
