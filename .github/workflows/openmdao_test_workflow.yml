@@ -50,6 +50,8 @@ jobs:
           echo "=============================================================";
           echo "Create conda environment";
           echo "=============================================================";
+          source $CONDA/etc/profile.d/conda.sh
+
           conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }}
 
           conda activate OpenMDAO
