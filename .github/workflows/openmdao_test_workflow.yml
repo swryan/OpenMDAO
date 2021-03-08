@@ -47,7 +47,7 @@ jobs:
 
           echo $CONDA/bin >> $GITHUB_PATH
 
-          conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }}
+          conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }} -q -y;
 
           conda activate OpenMDAO
 
@@ -58,8 +58,8 @@ jobs:
             echo "Installing PETSc";
             echo "=============================================================";
 
-            conda install -c anaconda mpi4py --yes;
-            conda install -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py --yes;
+            conda install -c anaconda mpi4py -q -y;
+            conda install -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py -q -y;
           fi
 
           if [ "${{ matrix.PYOPTSPARSE }}" ]; then
@@ -70,7 +70,7 @@ jobs:
 
             cd build_pyoptsparse;
             chmod 755 ./build_pyoptsparse.sh;
-            ./build_pyoptsparse.sh -b "$PYOPTSPARSE";
+            ./build_pyoptsparse.sh -b "${{ matrix.PYOPTSPARSE }}";
             cd ..
 
             export LD_LIBRARY_PATH=$HOME/ipopt/lib
