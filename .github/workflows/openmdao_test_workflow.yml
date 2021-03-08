@@ -24,7 +24,7 @@ jobs:
         PY: [3]
         NUMPY: [1]
         SCIPY: [1]
-        PETSc: [3]
+        PETSc: []
         PYOPTSPARSE: ['v2.1.5']
 
     steps:
@@ -95,4 +95,4 @@ jobs:
           echo "=============================================================";
           echo "Run tests";
           echo "=============================================================";
-          testflo -n 1 openmdao --timeout=120 --show_skipped --coverage  --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
+          testflo -n 1 openmdao --pre_announce --timeout=120 --show_skipped --coverage --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
