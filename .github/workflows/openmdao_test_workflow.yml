@@ -21,7 +21,8 @@ jobs:
 
     strategy:
       matrix:
-        PY: [3, 3.8, 3.7, 3.6]
+        PY: [3, 3.6]
+        PETSc: ['', 3]
 
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
@@ -32,14 +33,25 @@ jobs:
         with:
           python-version:  ${{ matrix.PY }}
 
-      - name: 'Install dependencies'
+      - name: Install & test
         run: |
+          # $CONDA is an environment variable pointing to the root of the miniconda directory
+          echo $CONDA/bin >> $GITHUB_PATH
+
           python -m pip install --upgrade pip
 
-      - name: 'Install OpenMDAO'
-        run: |
+          echo " >> Installing optional packages for test coverage";
+          pip install psutil objgraph git+https://github.com/mdolab/pyxdsm;
+
+          if [ "$PETSc" ]; then
+            echo " >> Installing PETSc";
+            conda install -c anaconda mpi4py --yes;
+            conda install -c conda-forge petsc=$PETSc petsc4py --yes;
+          fi
+
+          echo " >> Installing OpenMDAO";
           pip install .[all]
 
-      - name: 'Run testflo'
-        run: |
+          pyppeteer-install
+
           testflo -n 1 openmdao --timeout=120 --show_skipped --coverage  --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
