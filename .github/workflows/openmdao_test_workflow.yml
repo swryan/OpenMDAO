@@ -21,7 +21,7 @@ jobs:
 
     strategy:
       matrix:
-        PY: [3, 3.6]
+        PY: [3]
         PETSc: [3]
 
     steps:
@@ -35,7 +35,7 @@ jobs:
 
       - name: Install & test
         run: |
-          echo "$PY" $PETSc"
+          echo "$PY" "$PETSc"
 
           # $CONDA is an environment variable pointing to the root of the miniconda directory
           echo $CONDA/bin >> $GITHUB_PATH
