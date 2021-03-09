@@ -1,10 +1,9 @@
 # Run Tests
 
-name: OpenMDAO Workflow
+name: OpenMDAO Test Workflow
 
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
-  # Remove push when finally merging
   push:
     branches: [ test ]
   pull_request:
@@ -23,18 +22,23 @@ jobs:
       matrix:
         include:
           # latest versions
-          PY: 3
-          NUMPY: 1
-          SCIPY: 1
-          PETSc: 3
-          PYOPTSPARSE: 'v2.1.5'
-        include:
+          - PY: 3
+            NUMPY: 1
+            SCIPY: 1
+            PETSc: 3
+            PYOPTSPARSE: 'v2.1.5'
+          # baseline versions
+          - PY: 3.8
+            NUMPY: 1.18
+            SCIPY: 1.4
+            PETSc: 3.12
+            PYOPTSPARSE: 'v2.1.5'
           # oldest supported versions
-          PY: 3.6
-          NUMPY: 1.16
-          SCIPY: 1.2
-          PETSc: 3.10.2
-          PYOPTSPARSE: 'v1.2'
+          - PY: 3.6
+            NUMPY: 1.16
+            SCIPY: 1.2
+            PETSc: 3.10.2
+            PYOPTSPARSE: 'v1.2'
 
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
