@@ -1,7 +1,7 @@
+[![GitHub Test Badge][17]][18]
 [![TravisCI Badge][9]][10]
 [![AppVeyor Badge][11]][12]
 [![Coveralls Badge][13]][14]
-[![GitHub Test Badge][17]][18]
 
 # [OpenMDAO][0]
 
@@ -168,5 +168,5 @@ browser.
 
 [16]: https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode "Pip Editable Mode"
 
-[17]: https://github.com/OpenMDAO/OpenMDAO/actions/workflows/openmdao_test_workflow/badge.svg "Github Actions Badge"
+[17]: https://github.com/swryan/OpenMDAO/actions/workflows/openmdao_test_workflow/badge.svg "Github Actions Badge"
 [18]: https://github.com/swryan/OpenMDAO/actions "Github Actions"

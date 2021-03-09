@@ -31,6 +31,10 @@ jobs:
       # Checks out a copy of your repository on the ubuntu-latest machine
       - name: Checkout code
         uses: actions/checkout@v2
+      - run: |
+          git fetch --prune --unshallow --tags
+          echo exit code $?
+          git tag --list
 
       - uses: actions/setup-python@v2
         with:
