@@ -21,11 +21,20 @@ jobs:
 
     strategy:
       matrix:
-        PY: [3]
-        NUMPY: [1]
-        SCIPY: [1]
-        PETSc: [3]
-        PYOPTSPARSE: ['v2.1.5']
+        include:
+          # latest versions
+          PY: 3
+          NUMPY: 1
+          SCIPY: 1
+          PETSc: 3
+          PYOPTSPARSE: 'v2.1.5'
+        include:
+          # oldest supported versions
+          PY: 3.6
+          NUMPY: 1.16
+          SCIPY: 1.2
+          PETSc: 3.10.2
+          PYOPTSPARSE: 'v1.2'
 
     steps:
       # Checks out a copy of your repository on the ubuntu-latest machine
@@ -100,5 +109,5 @@ jobs:
           testflo -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
           
           if [ "${{ matrix.PETSc }}" ]; then
-            make travis;
+            make all;
           fi

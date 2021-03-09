@@ -168,5 +168,5 @@ browser.
 
 [16]: https://setuptools.readthedocs.io/en/latest/setuptools.html#development-mode "Pip Editable Mode"
 
-[17]: https://github.com/swryan/OpenMDAO/actions/workflows/openmdao_test_workflow/badge.svg "Github Actions Badge"
+[17]: https://github.com/swryan/OpenMDAO/actions/workflows/openmdao_test_workflow.yml/badge.svg "Github Actions Badge"
 [18]: https://github.com/swryan/OpenMDAO/actions "Github Actions"
