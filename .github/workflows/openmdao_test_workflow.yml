@@ -1,24 +1,21 @@
 # Run Tests
 
-name: OpenMDAO Test Workflow
+name: OpenMDAO Test
 
 on:
   # Triggers the workflow on push or pull request events but only for the master branch
   push:
-    branches: [ test ]
+    branches: [ master ]
   pull_request:
     branches: [ master ]
 
-  # Allows you to run this workflow manually from the Actions tab
-  workflow_dispatch:
-
 jobs:
-  # This job is called test
+
   test:
-    # Run on Ubuntu
     runs-on: ubuntu-latest
 
     strategy:
+      fail-fast: false
       matrix:
         include:
           # latest versions
@@ -46,8 +43,6 @@ jobs:
         uses: actions/checkout@v2
       - run: |
           git fetch --prune --unshallow --tags
-          echo exit code $?
-          git tag --list
 
       - uses: actions/setup-python@v2
         with:
