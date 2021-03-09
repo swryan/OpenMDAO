@@ -62,7 +62,7 @@ jobs:
 
           echo $CONDA/bin >> $GITHUB_PATH;
 
-          conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} numpy=${{ matrix.SCIPY }} -q -y;
+          conda create -n OpenMDAO python=${{ matrix.PY }} numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y;
 
           conda activate OpenMDAO;
 
