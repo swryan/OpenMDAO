@@ -49,8 +49,6 @@ jobs:
 
           conda activate OpenMDAO;
 
-          which python
-
           if [ "${{ matrix.PETSc }}" ]; then
             echo "=============================================================";
             echo "Installing PETSc";
@@ -95,7 +93,7 @@ jobs:
           echo "=============================================================";
           cd openmdao/docs;
 
-          testflo -n 1 openmdao --pre_announce --timeout=120 --show_skipped --coverage --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
+          testflo -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao --cover-omit \*tests/\*  --cover-omit \*devtools/\* --cover-omit \*test_suite/\* --cover-omit \*docs/\* --cover-omit \*code_review/\*;
           
           if [ "${{ matrix.PETSc }}" ]; then
             make travis;
