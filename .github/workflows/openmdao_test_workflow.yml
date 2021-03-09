@@ -72,7 +72,7 @@ jobs:
             echo "=============================================================";
 
             conda install -c anaconda mpi4py -q -y;
-            conda install -c conda-forge petsc=$${{ matrix.PETSc }} petsc4py -q -y;
+            conda install -c conda-forge petsc=${{ matrix.PETSc }} petsc4py -q -y;
           fi
 
           if [ "${{ matrix.PYOPTSPARSE }}" ]; then
