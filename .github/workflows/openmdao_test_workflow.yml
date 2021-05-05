@@ -187,6 +187,8 @@ jobs:
           echo "============================================================="
           echo "Submit coverage"
           echo "============================================================="
+          pwd
+          git --no-pager log -1
           cp $HOME/.coverage .
           pip install git+https://github.com/swryan/coveralls-python
           SITE_DIR=`python -c 'import site; print(site.getsitepackages()[-1])'`
