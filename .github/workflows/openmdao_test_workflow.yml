@@ -199,7 +199,6 @@ jobs:
         shell: bash -l {0}
         run: |
           cd openmdao/docs
-          oops
           if [[ "${{ secrets.SNOPT_LOCATION_72 }}" || "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
             echo "============================================================="
             echo "Build docs with SNOPT examples."
@@ -234,6 +233,7 @@ jobs:
           python build_source_docs.py
           jupyter-book build -W --keep-going openmdao_book
           python copy_build_artifacts.py
+          oops
 
       - name: Display doc build reports
         if: failure() && matrix.BUILD_DOCS && steps.build_docs.outcome == 'failure'
