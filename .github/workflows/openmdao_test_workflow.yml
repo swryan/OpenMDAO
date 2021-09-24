@@ -259,6 +259,20 @@ jobs:
             echo "Docs destination not available."
           fi
 
+      - name: Run bandit checks
+        if: matrix.BUILD_DOCS
+        id: bandit
+        shell: bash -l {0}
+        run: |
+          pip install bandit
+
+          echo "============================================================="
+          echo "Run bandit checks"
+          echo "============================================================="
+          echo $GITHUB_WORKSPACE
+          cd $GITHUB_WORKSPACE
+          bandit -r openmdao
+
       - name: Notify slack
         uses: act10ns/slack@v1
         env:
