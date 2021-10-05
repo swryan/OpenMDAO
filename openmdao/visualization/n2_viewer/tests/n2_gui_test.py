@@ -610,9 +610,8 @@ class n2_gui_test_case(_GuiTestCase):
         self.n2files[self.current_model] = n2file
         print("Creating " + n2file)
 
-        subprocess.run(
-            ['openmdao', 'n2', '-o', n2file,  '--no_browser', pyfile],
-            stderr=subprocess.PIPE, stdout=subprocess.PIPE)
+        cmd = ['openmdao', 'n2', '-o', n2file,  '--no_browser', pyfile],
+        subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)  # nosec: trusted input
 
     async def load_test_page(self):
         """ Load the specified HTML file from the local filesystem. """
@@ -899,7 +898,7 @@ class n2_gui_test_case(_GuiTestCase):
             try:
                 for n2html in self.n2files:
                     os.remove(self.n2files[n2html])
-            except:
+            except OSError:
                 # Don't want the test to fail if the test file is
                 # already removed
                 pass

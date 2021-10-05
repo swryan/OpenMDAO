@@ -182,7 +182,7 @@ class ShellProc(subprocess.Popen):
             Error Message.
         """
         if sys.platform == 'win32':
-            subprocess.Popen("TASKKILL /F /PID {pid} /T".format(pid=self.pid))
+            subprocess.Popen(f"TASKKILL /F /PID {self.pid} /T")  # nosec: trusted input
         else:
             os.killpg(os.getpgid(self.pid), signal.SIGTERM)
 
