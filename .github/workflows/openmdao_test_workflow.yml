@@ -271,7 +271,7 @@ jobs:
           echo "============================================================="
           echo $GITHUB_WORKSPACE
           cd $GITHUB_WORKSPACE
-          bandit -r openmdao
+          bandit -ll -r openmdao
 
       - name: Notify slack
         uses: act10ns/slack@v1

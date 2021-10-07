@@ -604,8 +604,7 @@ class n2_gui_test_case(_GuiTestCase):
         self.scripts = n2_gui_test_scripts
         self.known_model_names = n2_gui_test_models
 
-        n2file = os.path.join(
-            self.modelDir, self.current_model + GUI_N2_SUFFIX)
+        n2file = os.path.join(self.modelDir, self.current_model + GUI_N2_SUFFIX)
         pyfile = os.path.join(self.modelDir, self.current_model + '.py')
         self.n2files[self.current_model] = n2file
         print("Creating " + n2file)
