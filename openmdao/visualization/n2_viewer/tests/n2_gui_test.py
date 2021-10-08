@@ -609,7 +609,7 @@ class n2_gui_test_case(_GuiTestCase):
         self.n2files[self.current_model] = n2file
         print("Creating " + n2file)
 
-        cmd = ['openmdao', 'n2', '-o', n2file,  '--no_browser', pyfile],
+        cmd = ['openmdao', 'n2', '-o', n2file,  '--no_browser', pyfile]
         subprocess.run(cmd, stderr=subprocess.PIPE, stdout=subprocess.PIPE)  # nosec: trusted input
 
     async def load_test_page(self):
