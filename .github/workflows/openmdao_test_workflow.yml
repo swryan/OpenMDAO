@@ -28,6 +28,7 @@ jobs:
             PYOPTSPARSE: 'v2.1.5'
             SNOPT: 7.7
             OPTIONAL: '[all]'
+            BANDIT: True,
             BUILD_DOCS: True
             PUBLISH_DOCS: True
 
@@ -202,6 +203,17 @@ jobs:
           SITE_DIR=`python -c 'import site; print(site.getsitepackages()[-1])'`
           coveralls --basedir $SITE_DIR
 
+      - name: Scan for security issues
+        if: matrix.BANDIT
+        id: bandit
+        shell: bash -l {0}
+        run: |
+          pip install bandit
+          echo "============================================================="
+          echo "Run bandit scan for high/medium severity issues"
+          echo "============================================================="
+          bandit -c bandit.yml -ll -r $GITHUB_WORKSPACE/openmdao
+
       - name: Build docs
         if: matrix.BUILD_DOCS
         id: build_docs
@@ -258,19 +270,6 @@ jobs:
           else
             echo "Docs destination not available."
           fi
-
-      - name: Scan for security issues
-        if: matrix.BUILD_DOCS
-        id: bandit
-        shell: bash -l {0}
-        run: |
-          pip install bandit
-
-          echo "============================================================="
-          echo "Run bandit checks"
-          echo "============================================================="
-          cd $GITHUB_WORKSPACE
-          bandit -c bandit.yml -ll -r openmdao
 
       - name: Notify slack
         uses: act10ns/slack@v1
