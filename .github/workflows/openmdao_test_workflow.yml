@@ -89,7 +89,6 @@ jobs:
         uses: conda-incubator/setup-miniconda@v2
         with:
           miniforge-version: latest
-          activate-environment: OpenMDAO
           python-version: ${{ matrix.PY }}
 
       - name: Install OpenMDAO
@@ -100,7 +99,7 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          pip install .${{ matrix.OPTIONAL }}
+          pip install .${{ matrix.OPTIONAL }} --ignore-installed
 
       - name: Install PETSc
         if: matrix.PETSc
@@ -109,7 +108,7 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          conda install -c conda-forge mpi4py petsc=${{ matrix.PETSc }} petsc4py -q -y
+          conda install mpi4py petsc=${{ matrix.PETSc }} petsc4py -v -y
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
       - name: Install pyOptSparse
