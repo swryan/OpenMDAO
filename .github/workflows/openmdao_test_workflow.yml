@@ -108,7 +108,7 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          conda install mpi4py petsc=${{ matrix.PETSc }} petsc4py -v -y
+          conda install mpi4py petsc4py=${{ matrix.PETSc }} -v -y
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
       - name: Install pyOptSparse
@@ -166,6 +166,11 @@ jobs:
           echo "Install additional packages for testing/coverage"
           echo "============================================================="
           pip install psutil objgraph git+https://github.com/mdolab/pyxdsm
+
+          echo "============================================================="
+          echo "Install dependencies for playwright"
+          echo "============================================================="
+          npx playwright install-deps
 
       - name: Display conda info
         shell: bash -l {0}
