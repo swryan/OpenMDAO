@@ -114,7 +114,10 @@ jobs:
           echo "============================================================="
           echo "Check MPI installation"
           echo "============================================================="
-          mpiexec -n 5 python mpi4py.bench helloworld
+          which mpicc
+          which mpiexec
+          which mpirun
+          mpirun -n 5 python mpi4py.bench helloworld
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
