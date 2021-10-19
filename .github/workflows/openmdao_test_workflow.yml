@@ -117,7 +117,7 @@ jobs:
           which mpicc
           which mpiexec
           which mpirun
-          mpirun -n 5 python mpi4py.bench helloworld
+          mpirun -n 5 python -m mpi4py.bench helloworld
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
@@ -231,6 +231,14 @@ jobs:
             python openmdao_book/other/disable_snopt_cells.py
           fi
 
+          echo "============================================================="
+          echo "Check MPI installation"
+          echo "============================================================="
+          which mpicc
+          which mpiexec
+          which mpirun
+          mpirun -n 5 python -m mpi4py.bench helloworld
+          
           # start ipcluster to run MPI under notebooks
           ./ipcluster_start.sh
           sleep 12
