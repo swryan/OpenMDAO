@@ -33,7 +33,7 @@ jobs:
 
           # latest versions
           - NAME: Latest
-            PY: 3.9
+            PY: 3
             NUMPY: 1
             SCIPY: 1
             PETSc: 3
@@ -53,7 +53,7 @@ jobs:
 
           # minimal install
           - NAME: Minimal
-            PY: 3.9
+            PY: 3
             NUMPY: 1
             SCIPY: 1
             PYOPTSPARSE: 'conda-forge'
@@ -108,7 +108,7 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          conda install mpi4py petsc4py=${{ matrix.PETSc }} -v -y
+          conda install -c conda-forge mpi4py petsc4py=${{ matrix.PETSc }} -v -y
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
       - name: Install pyOptSparse
