@@ -46,7 +46,7 @@ jobs:
             PY: 3.6
             NUMPY: 1.17
             SCIPY: 1.2
-            PETSc: 3.10.2
+            PETSc: 3.10
             PYOPTSPARSE: 'v1.2'
             SNOPT: 7.2
             OPTIONAL: '[all]'
@@ -108,7 +108,7 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          conda install -c conda-forge mpi4py petsc4py=${{ matrix.PETSc }} -v -y
+          conda install openmpi-mpicc mpi4py petsc4py=${{ matrix.PETSc }} -v -y
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
       - name: Install pyOptSparse
