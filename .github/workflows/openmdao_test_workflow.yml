@@ -115,7 +115,7 @@ jobs:
           echo "============================================================="
           echo "Check MPI installation"
           echo "============================================================="
-          which mpicc
+          # which mpicc
           which mpiexec
           which mpirun
           # mpirun -n 5 python -m mpi4py.bench helloworld
