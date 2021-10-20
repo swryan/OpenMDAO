@@ -89,6 +89,7 @@ jobs:
         uses: conda-incubator/setup-miniconda@v2
         with:
           miniforge-version: latest
+          auto-update-conda: true
           python-version: ${{ matrix.PY }}
 
       - name: Install OpenMDAO
@@ -117,7 +118,7 @@ jobs:
           which mpicc
           which mpiexec
           which mpirun
-          mpirun -n 5 python -m mpi4py.bench helloworld
+          # mpirun -n 5 python -m mpi4py.bench helloworld
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
@@ -237,7 +238,7 @@ jobs:
           which mpicc
           which mpiexec
           which mpirun
-          mpirun -n 5 python -m mpi4py.bench helloworld
+          # mpirun -n 5 python -m mpi4py.bench helloworld
           
           # start ipcluster to run MPI under notebooks
           ./ipcluster_start.sh
