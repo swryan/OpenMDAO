@@ -195,7 +195,7 @@ jobs:
           echo "============================================================="
           cp .coveragerc $HOME
           cd $HOME
-          testflo -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
+          testflo -vs -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
 
       - name: Submit coverage
         shell: bash -l {0}
@@ -235,7 +235,7 @@ jobs:
           echo "============================================================="
           echo "Check MPI installation"
           echo "============================================================="
-          which mpicc
+          # which mpicc
           which mpiexec
           which mpirun
           # mpirun -n 5 python -m mpi4py.bench helloworld
