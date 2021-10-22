@@ -134,12 +134,12 @@ class ShellProc(subprocess.Popen):
             if sys.platform == 'win32':
                 subprocess.Popen.__init__(self, args, stdin=self._inp,
                                           stdout=self._out, stderr=self._err,
-                                          shell=shell, env=environ,
+                                          shell=shell, env=environ,  # nosec: user responsibility
                                           universal_newlines=universal_newlines)
             else:
                 subprocess.Popen.__init__(self, args, stdin=self._inp,
                                           stdout=self._out, stderr=self._err,
-                                          shell=shell, env=environ,
+                                          shell=shell, env=environ,  # nosec: user responsibility
                                           universal_newlines=universal_newlines,
                                           # setsid to put this and any children in
                                           # same process group so we can kill them
