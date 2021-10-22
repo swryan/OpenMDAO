@@ -195,7 +195,7 @@ jobs:
           echo "============================================================="
           cp .coveragerc $HOME
           cd $HOME
-          testflo -vs -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
+          testflo -v -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
 
       - name: Submit coverage
         shell: bash -l {0}
