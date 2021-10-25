@@ -110,6 +110,7 @@ jobs:
           echo "Install MPI"
           echo "============================================================="
           conda install -c conda-forge openmpi mpi4py
+          export OMPI_MCA_rmaps_base_oversubscribe=1
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
           echo "============================================================="
