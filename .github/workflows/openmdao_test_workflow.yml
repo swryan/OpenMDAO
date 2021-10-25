@@ -109,7 +109,7 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          pip install mpi4py petsc4py=${{ matrix.PETSc }}
+          pip install mpi4py petsc4py==${{ matrix.PETSc }}
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
           echo "============================================================="
