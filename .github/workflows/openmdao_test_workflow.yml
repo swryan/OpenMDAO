@@ -95,7 +95,7 @@ jobs:
       - name: Install OpenMDAO
         shell: bash -l {0}
         run: |
-          conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
+          conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} cython swig -q -y
 
           echo "============================================================="
           echo "Install OpenMDAO"
