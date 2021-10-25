@@ -109,16 +109,16 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          conda install mpich mpi4py petsc4py=${{ matrix.PETSc }} -v -y
+          pip install mpi4py petsc4py=${{ matrix.PETSc }} -v -y
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
           echo "============================================================="
           echo "Check MPI installation"
           echo "============================================================="
-          # which mpicc
+          which mpicc
           which mpiexec
           which mpirun
-          # mpirun -n 5 python -m mpi4py.bench helloworld
+          mpirun -n 5 python -m mpi4py.bench helloworld
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
