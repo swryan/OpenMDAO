@@ -36,7 +36,7 @@ jobs:
             PY: 3
             NUMPY: 1
             SCIPY: 1
-            PETSc: 3
+            PETSc: 3.16
             PYOPTSPARSE: 'v2.6.2'
             SNOPT: 7.7
             OPTIONAL: '[all]'
@@ -46,7 +46,7 @@ jobs:
             PY: 3.6
             NUMPY: 1.17
             SCIPY: 1.2
-            PETSc: 3.10.0
+            PETSc: 3.10
             PYOPTSPARSE: 'v1.2'
             SNOPT: 7.2
             OPTIONAL: '[all]'
@@ -109,7 +109,8 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          pip install mpi4py petsc4py==${{ matrix.PETSc }}
+          conda install -c conda-forge mpich mpi4py
+          pip install petsc4py==${{ matrix.PETSc }}
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
           echo "============================================================="
