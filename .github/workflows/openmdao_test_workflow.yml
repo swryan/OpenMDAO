@@ -124,7 +124,9 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
-          pip install petsc4py==${{ matrix.PETSc }}
+          export CMAKE_CXX_COMPILER_FORCED=1
+          pip install petsc==${{ matrix.PETSc }}
+          pip install petsc4py
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
