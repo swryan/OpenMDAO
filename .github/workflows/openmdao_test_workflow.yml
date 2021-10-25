@@ -31,33 +31,33 @@ jobs:
             BUILD_DOCS: True
             PUBLISH_DOCS: True
 
-          # latest versions
-          - NAME: Latest
-            PY: 3
-            NUMPY: 1
-            SCIPY: 1
-            PETSc: 3.16
-            PYOPTSPARSE: 'v2.6.2'
-            SNOPT: 7.7
-            OPTIONAL: '[all]'
+          # # latest versions
+          # - NAME: Latest
+          #   PY: 3
+          #   NUMPY: 1
+          #   SCIPY: 1
+          #   PETSc: 3.16
+          #   PYOPTSPARSE: 'v2.6.2'
+          #   SNOPT: 7.7
+          #   OPTIONAL: '[all]'
 
-          # oldest supported versions
-          - NAME: Oldest
-            PY: 3.6
-            NUMPY: 1.17
-            SCIPY: 1.2
-            PETSc: 3.10
-            PYOPTSPARSE: 'v1.2'
-            SNOPT: 7.2
-            OPTIONAL: '[all]'
+          # # oldest supported versions
+          # - NAME: Oldest
+          #   PY: 3.6
+          #   NUMPY: 1.17
+          #   SCIPY: 1.2
+          #   PETSc: 3.10
+          #   PYOPTSPARSE: 'v1.2'
+          #   SNOPT: 7.2
+          #   OPTIONAL: '[all]'
 
-          # minimal install
-          - NAME: Minimal
-            PY: 3
-            NUMPY: 1
-            SCIPY: 1
-            PYOPTSPARSE: 'conda-forge'
-            OPTIONAL: '[test]'
+          # # minimal install
+          # - NAME: Minimal
+          #   PY: 3
+          #   NUMPY: 1
+          #   SCIPY: 1
+          #   PYOPTSPARSE: 'conda-forge'
+          #   OPTIONAL: '[test]'
 
     name: Ubuntu ${{ matrix.NAME }}
 
@@ -107,10 +107,9 @@ jobs:
         shell: bash -l {0}
         run: |
           echo "============================================================="
-          echo "Install PETSc"
+          echo "Install MPI"
           echo "============================================================="
-          conda install -c conda-forge mpich mpi4py
-          pip install petsc4py==${{ matrix.PETSc }}
+          conda install -c conda-forge openmpi mpi4py
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
 
           echo "============================================================="
@@ -120,6 +119,11 @@ jobs:
           which mpiexec
           which mpirun
           mpirun -n 5 python -m mpi4py.bench helloworld
+          
+          echo "============================================================="
+          echo "Install PETSc"
+          echo "============================================================="
+          pip install petsc4py==${{ matrix.PETSc }}
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
