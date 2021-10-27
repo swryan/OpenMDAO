@@ -8,6 +8,7 @@ import sqlite3
 import numpy as np
 
 import openmdao.api as om
+from openmdao.recorders.case_reader import CaseReader
 
 from openmdao.test_suite.scripts.circuit_analysis import Resistor, Diode, Node
 from openmdao.test_suite.components.ae_tests import AEComp
@@ -2632,6 +2633,54 @@ class TestSqliteRecorder(unittest.TestCase):
         with assert_warning(OMDeprecationWarning, msg):
             rec_mgr.record_metadata(None)
 
+    def test_cobyla_constraint(self):
+        prob = om.Problem()
+        model = prob.model
+
+        model.set_input_defaults("x", val=50.0)
+        model.set_input_defaults("y", val=50.0)
+
+        model.add_subsystem("comp", Paraboloid(), promotes=["*"])
+
+        prob.set_solver_print(level=0)
+
+        prob.driver = om.ScipyOptimizeDriver(optimizer="COBYLA", tol=1e-9, disp=False)
+        prob.driver.add_recorder(self.recorder)
+
+        model.add_design_var("x", lower=-50.0, upper=50.0)
+        model.add_design_var("y", lower=-50.0, upper=50.0)
+        model.add_objective("f_xy")
+
+        prob.setup()
+        t0, t1 = run_driver(prob)
+
+        print('iter:', prob.driver.iter_count)
+
+        cr = CaseReader(self.filename)
+        cases = cr.list_cases('driver')
+        case = cr.get_case(cases[-1])
+        print(case)
+
+        coordinate = [0, 'ScipyOptimize_COBYLA', (147, )]
+
+        expected_desvars = {
+            "x": prob['x'],
+            "y": prob['y']
+        }
+        expected_objectives = {
+            "f_xy": prob['f_xy']
+        }
+        expected_constraints = {
+            "x": prob['x'],
+            "y": prob['y']
+        }
+
+        expected_outputs = expected_desvars
+        expected_outputs.update(expected_objectives)
+        expected_outputs.update(expected_constraints)
+
+        expected_data = ((coordinate, (t0, t1), expected_outputs, None, None),)
+        assertDriverIterDataRecorded(self, expected_data, self.eps)
 
 @use_tempdirs
 class TestFeatureSqliteRecorder(unittest.TestCase):
