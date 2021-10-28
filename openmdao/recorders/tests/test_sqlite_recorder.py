@@ -2633,6 +2633,10 @@ class TestSqliteRecorder(unittest.TestCase):
             rec_mgr.record_metadata(None)
 
     def test_cobyla_constraints(self):
+        """
+        When using the COBYLA optimizer, bounds are managed by adding constraints on input
+        variables. Check that SqliteRecorder and CaseReader handle this properly.
+        """
         prob = om.Problem()
         model = prob.model
 
@@ -2660,9 +2664,9 @@ class TestSqliteRecorder(unittest.TestCase):
         con = case.get_constraints()
         obj = case.get_objectives()
 
-        assert_near_equal(dvs, {'x': [6.66666669], 'y': [-7.33333338]}, tolerance=1e-8)
-        assert_near_equal(con, {'x': [6.66666669], 'y': [-7.33333338]}, tolerance=1e-8)
-        assert_near_equal(obj, {'f_xy': [-27.33333333]}, tolerance=1e-8)
+        assert_near_equal(dvs, {'x': 6.66666669, 'y': -7.33333338}, tolerance=1e-8)
+        assert_near_equal(con, {'x': 6.66666669, 'y': -7.33333338}, tolerance=1e-8)
+        assert_near_equal(obj, {'f_xy': -27.33333333}, tolerance=1e-8)
 
 @use_tempdirs
 class TestFeatureSqliteRecorder(unittest.TestCase):
