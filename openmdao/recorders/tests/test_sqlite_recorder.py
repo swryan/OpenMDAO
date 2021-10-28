@@ -8,7 +8,6 @@ import sqlite3
 import numpy as np
 
 import openmdao.api as om
-from openmdao.recorders.case_reader import CaseReader
 
 from openmdao.test_suite.scripts.circuit_analysis import Resistor, Diode, Node
 from openmdao.test_suite.components.ae_tests import AEComp
@@ -2633,7 +2632,7 @@ class TestSqliteRecorder(unittest.TestCase):
         with assert_warning(OMDeprecationWarning, msg):
             rec_mgr.record_metadata(None)
 
-    def test_cobyla_constraint(self):
+    def test_cobyla_constraints(self):
         prob = om.Problem()
         model = prob.model
 
@@ -2652,9 +2651,9 @@ class TestSqliteRecorder(unittest.TestCase):
         model.add_objective("f_xy")
 
         prob.setup()
-        t0, t1 = run_driver(prob)
+        prob.run_driver()
 
-        cr = CaseReader(self.filename)
+        cr = om.CaseReader(self.filename)
         case = cr.get_case(-1)
 
         dvs = case.get_design_vars()
@@ -2664,7 +2663,6 @@ class TestSqliteRecorder(unittest.TestCase):
         assert_near_equal(dvs, {'x': [6.66666669], 'y': [-7.33333338]}, tolerance=1e-8)
         assert_near_equal(con, {'x': [6.66666669], 'y': [-7.33333338]}, tolerance=1e-8)
         assert_near_equal(obj, {'f_xy': [-27.33333333]}, tolerance=1e-8)
-
 
 @use_tempdirs
 class TestFeatureSqliteRecorder(unittest.TestCase):
