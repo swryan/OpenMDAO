@@ -2654,33 +2654,17 @@ class TestSqliteRecorder(unittest.TestCase):
         prob.setup()
         t0, t1 = run_driver(prob)
 
-        print('iter:', prob.driver.iter_count)
-
         cr = CaseReader(self.filename)
-        cases = cr.list_cases('driver')
-        case = cr.get_case(cases[-1])
-        print(case)
+        case = cr.get_case(-1)
 
-        coordinate = [0, 'ScipyOptimize_COBYLA', (147, )]
+        dvs = case.get_design_vars()
+        con = case.get_constraints()
+        obj = case.get_objectives()
 
-        expected_desvars = {
-            "x": prob['x'],
-            "y": prob['y']
-        }
-        expected_objectives = {
-            "f_xy": prob['f_xy']
-        }
-        expected_constraints = {
-            "x": prob['x'],
-            "y": prob['y']
-        }
+        assert_near_equal(dvs, {'x': [6.66666669], 'y': [-7.33333338]}, tolerance=1e-8)
+        assert_near_equal(con, {'x': [6.66666669], 'y': [-7.33333338]}, tolerance=1e-8)
+        assert_near_equal(obj, {'f_xy': [-27.33333333]}, tolerance=1e-8)
 
-        expected_outputs = expected_desvars
-        expected_outputs.update(expected_objectives)
-        expected_outputs.update(expected_constraints)
-
-        expected_data = ((coordinate, (t0, t1), expected_outputs, None, None),)
-        assertDriverIterDataRecorded(self, expected_data, self.eps)
 
 @use_tempdirs
 class TestFeatureSqliteRecorder(unittest.TestCase):
