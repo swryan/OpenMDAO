@@ -88,6 +88,7 @@ from openmdao.utils.options_dictionary import OptionsDictionary
 # Recorders
 from openmdao.recorders.sqlite_recorder import SqliteRecorder
 from openmdao.recorders.case_reader import CaseReader
+from openmdao.recorders.case_widgets import CasesWidget
 
 # Visualizations
 from openmdao.visualization.n2_viewer.n2_viewer import n2
