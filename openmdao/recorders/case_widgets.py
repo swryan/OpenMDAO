@@ -4,8 +4,11 @@ try:
     from ipywidgets import interact
     import ipywidgets as widgets
     import matplotlib.pyplot as plt
-except ImportError:
-    ipywidgets = None
+except:
+    import traceback
+    traceback.print_exc()
+    # ipywidgets = None
+
 
 import numpy as np
 
