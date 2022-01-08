@@ -7,7 +7,7 @@ try:
 except Exception:
     import traceback
     traceback.print_exc()
-    # ipywidgets = None
+    widgets = None
 
 
 import numpy as np
@@ -30,7 +30,7 @@ class CasesWidget(object):
         """
         Initialize.
         """
-        if ipywidgets is None:
+        if widgets is None:
             simple_warning("ipywidgets is not installed. Run `pip install openmdao[notebooks]`.")
             return
 
