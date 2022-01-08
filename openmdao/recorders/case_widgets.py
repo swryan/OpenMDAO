@@ -1,11 +1,14 @@
-from ipywidgets import interact
-import ipywidgets as widgets
-
-import matplotlib.pyplot as plt
+try:
+    from ipywidgets import interact
+    import ipywidgets as widgets
+    import matplotlib.pyplot as plt
+except ImportError:
+    ipywidgets = None
 
 import numpy as np
 
 from openmdao.recorders.case_reader import CaseReader
+from openmdao.utils.general_utils import simple_warning
 
 
 class CasesWidget(object):
@@ -22,6 +25,10 @@ class CasesWidget(object):
         """
         Initialize.
         """
+        if ipywidgets is None:
+            simple_warning("ipywidgets is not installed. Run `pip install openmdao[notebooks]`.")
+            return
+
         if isinstance(cr, str):
             cr = CaseReader(cr)
 
