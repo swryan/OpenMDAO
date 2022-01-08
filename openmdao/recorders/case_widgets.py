@@ -4,7 +4,7 @@ try:
     from ipywidgets import interact
     import ipywidgets as widgets
     import matplotlib.pyplot as plt
-except:
+except Exception:
     import traceback
     traceback.print_exc()
     # ipywidgets = None
