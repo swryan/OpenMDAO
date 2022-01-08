@@ -1,4 +1,4 @@
-from ipywidgets import interact, interactive, fixed, interact_manual
+from ipywidgets import interact
 import ipywidgets as widgets
 
 import matplotlib.pyplot as plt
@@ -10,12 +10,12 @@ from openmdao.recorders.case_reader import CaseReader
 
 class CasesWidget(object):
     """
-    Visualizer to plot variables vs cases, variables vs variables, and more.
+    Widget to plot s variable over a sequence of cases.
 
     Parameters
     ----------
     cr : CaseReader or str
-        CaseReader or path to the recorder file.
+        CaseReader or path to the recorded data file.
     """
 
     def __init__(self, cr):
