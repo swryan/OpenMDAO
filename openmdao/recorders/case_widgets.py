@@ -1,3 +1,5 @@
+"""Widgets for accessing CaseReader in a Jupyter notebook."""
+
 try:
     from ipywidgets import interact
     import ipywidgets as widgets
@@ -39,9 +41,9 @@ class CasesWidget(object):
         )
 
         w_cases = widgets.IntRangeSlider(
-            value=[0, len(cr.list_cases(w_source.value, out_stream=None))-1],
+            value=[0, len(cr.list_cases(w_source.value, out_stream=None)) - 1],
             min=0,
-            max=len(cr.list_cases(w_source.value, out_stream=None))-1,
+            max=len(cr.list_cases(w_source.value, out_stream=None)) - 1,
             step=1,
             description='Cases',
             disabled=False,
@@ -52,9 +54,9 @@ class CasesWidget(object):
         )
 
         def update_cases_range(*args):
-            last_case = len(cr.list_cases(w_source.value, out_stream=None))-1
+            last_case = len(cr.list_cases(w_source.value, out_stream=None)) - 1
             w_cases.max = last_case
-            w_cases.value=[0, last_case]
+            w_cases.value = [0, last_case]
         w_source.observe(update_cases_range, 'value')
 
         w_outvar = widgets.Dropdown(
@@ -65,7 +67,7 @@ class CasesWidget(object):
 
         def plot_func(source, cases, outvar):
             case_ids = cr.list_cases(source, out_stream=None)
-            case_nums = np.arange(cases[0], cases[1]+1, dtype=int)
+            case_nums = np.arange(cases[0], cases[1] + 1, dtype=int)
             selected = [case_ids[n] for n in case_nums]
             vals = [cr.get_case(case_id).outputs[outvar] for case_id in selected]
             y = np.array(vals)
@@ -73,4 +75,4 @@ class CasesWidget(object):
             plt.xticks(case_nums)
             plt.plot(case_nums, y)
 
-        interact(plot_func, source=w_source, cases=w_cases, outvar=w_outvar, description=f"cases for {w_source.value}", disabled=False)
+        interact(plot_func, source=w_source, cases=w_cases, outvar=w_outvar, disabled=False)
