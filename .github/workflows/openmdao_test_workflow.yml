@@ -197,7 +197,11 @@ jobs:
           echo "============================================================="
           cp .coveragerc $HOME
           cd $HOME
-          testflo -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
+
+          # test new version of testflo
+          pip install git+https://github.com/naylor-b/testflo/tree/new_coverage
+
+          testflo openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
 
       - name: Submit coverage
         shell: bash -l {0}
