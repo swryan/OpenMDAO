@@ -201,7 +201,7 @@ jobs:
           # test new version of testflo
           pip install git+https://github.com/naylor-b/testflo.git@new_coverage
 
-          testflo openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
+          testflo -n 1 openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
 
       - name: Submit coverage
         shell: bash -l {0}
