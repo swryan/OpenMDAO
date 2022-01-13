@@ -199,7 +199,7 @@ jobs:
           cd $HOME
 
           # test new version of testflo
-          pip install git+https://github.com/naylor-b/testflo/tree/new_coverage
+          pip install git+https://github.com/naylor-b/testflo.git@new_coverage
 
           testflo openmdao --timeout=120 --show_skipped --coverage --coverpkg openmdao
 
