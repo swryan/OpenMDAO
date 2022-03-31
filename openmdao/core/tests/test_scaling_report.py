@@ -287,7 +287,8 @@ class TestDiscreteScalingReport(unittest.TestCase):
 
 
 class TestDriverScalingReportMPI(TestDriverScalingReport):
-    N_PROCS=2
+    N_PROCS = 2
+    ISOLATED = True
 
 
 if __name__ == '__main__':
