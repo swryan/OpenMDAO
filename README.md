@@ -2,7 +2,7 @@
 [![Coveralls Badge][13]][14]
 [![PyPI version][10]][11]
 [![PyPI Monthly Downloads][12]][11]
-[![Binder][21][22]
+[![Binder][21]][22]
 
 # [OpenMDAO][0]
 
