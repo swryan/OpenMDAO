@@ -13,4 +13,5 @@ else
   ipython profile create --parallel --profile=mpi
 fi
 
+ipcluster nbextension enable
 ipcluster start -n 4 --profile=mpi --engines='ipyparallel.cluster.launcher.MPIEngineSetLauncher' &
