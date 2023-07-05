@@ -1,0 +1,12 @@
+name: openmdao-environment
+channels:
+  - conda-forge
+dependencies:
+  - python
+  - numpy
+  - scipy
+  - mpi4py
+  - petsc4py
+  - pip
+  - pip:
+    - openmdao[all]
