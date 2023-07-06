@@ -13,5 +13,8 @@ else
   ipython profile create --parallel --profile=mpi
 fi
 
+cp -R  $HOME/.profile_default $HOME/.jupyter/
+cp -R  $HOME/.profile_mpi $HOME/.jupyter/
+
 ipcluster nbextension enable
 ipcluster start -n 4 --profile=mpi --engines='ipyparallel.cluster.launcher.MPIEngineSetLauncher' &
