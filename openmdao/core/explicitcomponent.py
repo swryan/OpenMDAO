@@ -143,6 +143,9 @@ class ExplicitComponent(Component):
         """
         super()._setup_partials()
 
+        if self.matrix_free:
+            return
+
         # Note: These declare calls are outside of setup_partials so that users do not have to
         # call the super version of setup_partials. This is still in the final setup.
         for out_abs, meta in self._var_abs2meta['output'].items():
@@ -156,7 +159,7 @@ class ExplicitComponent(Component):
             size = meta['size']
 
             # ExplicitComponent jacobians have -1 on the diagonal.
-            if size > 0 and not self.matrix_free:
+            if size > 0:
                 arange = np.arange(size, dtype=INT_DTYPE)
 
                 self._subjacs_info[abs_key] = {
@@ -181,7 +184,7 @@ class ExplicitComponent(Component):
 
     def add_output(self, name, val=1.0, shape=None, units=None, res_units=None, desc='',
                    lower=None, upper=None, ref=1.0, ref0=0.0, res_ref=None, tags=None,
-                   shape_by_conn=False, copy_shape=None, distributed=None):
+                   shape_by_conn=False, copy_shape=None, compute_shape=None, distributed=None):
         """
         Add an output variable to the component.
 
@@ -232,6 +235,8 @@ class ExplicitComponent(Component):
         copy_shape : str or None
             If a str, that str is the name of a variable. Shape this output to match that of
             the named variable.
+        compute_shape : function or None
+            If a function, that function is called to determine the shape of this output.
         distributed : bool
             If True, this variable is a distributed variable, so it can have different sizes/values
             across MPI processes.
@@ -249,7 +254,8 @@ class ExplicitComponent(Component):
                                   lower=lower, upper=upper,
                                   ref=ref, ref0=ref0, res_ref=res_ref,
                                   tags=tags, shape_by_conn=shape_by_conn,
-                                  copy_shape=copy_shape, distributed=distributed)
+                                  copy_shape=copy_shape, compute_shape=compute_shape,
+                                  distributed=distributed)
 
     def _approx_subjac_keys_iter(self):
         is_output = self._outputs._contains_abs
@@ -385,12 +391,12 @@ class ExplicitComponent(Component):
         with self._matvec_context(scope_out, scope_in, mode) as vecs:
             d_inputs, d_outputs, d_residuals = vecs
 
-            # Jacobian and vectors are all scaled, unitless
-            J._apply(self, d_inputs, d_outputs, d_residuals, mode)
-
             if not self.matrix_free:
                 # if we're not matrix free, we can skip the rest because
                 # compute_jacvec_product does nothing.
+
+                # Jacobian and vectors are all scaled, unitless
+                J._apply(self, d_inputs, d_outputs, d_residuals, mode)
                 return
 
             # Jacobian and vectors are all unscaled, dimensional
@@ -404,10 +410,8 @@ class ExplicitComponent(Component):
 
                 try:
                     # handle identity subjacs (output_or_resid wrt itself)
-                    if isinstance(J, DictionaryJacobian):
-                        d_out_names = d_outputs._names
-
-                        if d_out_names:
+                    if J is None or isinstance(J, DictionaryJacobian):
+                        if d_outputs._names:
                             rflat = d_residuals._abs_get_val
                             oflat = d_outputs._abs_get_val
                             subjacs_empty = len(self._subjacs_info) == 0
@@ -415,15 +419,13 @@ class ExplicitComponent(Component):
                             # 'val' in the code below is a reference to the part of the
                             # output or residual array corresponding to the variable 'v'
                             if mode == 'fwd':
-                                for v in self._var_abs2meta['output']:
-                                    if v in d_out_names and (subjacs_empty or
-                                                             (v, v) not in self._subjacs_info):
+                                for v in d_outputs._names:
+                                    if subjacs_empty or (v, v) not in self._subjacs_info:
                                         val = rflat(v)
                                         val -= oflat(v)
                             else:  # rev
-                                for v in self._var_abs2meta['output']:
-                                    if v in d_out_names and (subjacs_empty or
-                                                             (v, v) not in self._subjacs_info):
+                                for v in d_outputs._names:
+                                    if subjacs_empty or (v, v) not in self._subjacs_info:
                                         val = oflat(v)
                                         val -= rflat(v)
 

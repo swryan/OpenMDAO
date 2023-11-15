@@ -1,9 +1,10 @@
 """Define the Component class."""
 
 import sys
+import types
 from collections import defaultdict
 from collections.abc import Iterable
-from itertools import product, chain
+from itertools import product
 
 from numbers import Integral
 import numpy as np
@@ -206,7 +207,7 @@ class Component(System):
             # reset shape if any dynamic shape parameters are set in case this is a resetup
             # NOTE: this is necessary because we allow variables to be added in __init__.
             if 'shape_by_conn' in meta and (meta['shape_by_conn'] or
-                                            meta['copy_shape'] is not None):
+                                            meta['compute_shape'] is not None):
                 meta['shape'] = None
                 if not isscalar(meta['val']):
                     if meta['val'].size > 0:
@@ -246,7 +247,7 @@ class Component(System):
         # If declare partials wasn't called, call it with of='*' and wrt='*' so we'll have
         # something to color.
         if self._coloring_info['coloring'] is not None:
-            for key, meta in self._declared_partials.items():
+            for meta in self._declared_partials.values():
                 if 'method' in meta and meta['method'] is not None:
                     break
             else:
@@ -341,7 +342,8 @@ class Component(System):
         Process all partials and approximations that the user declared.
         """
         self._subjacs_info = {}
-        self._jacobian = DictionaryJacobian(system=self)
+        if not self.matrix_free:
+            self._jacobian = DictionaryJacobian(system=self)
 
         self.setup_partials()  # hook for component writers to specify sparsity patterns
 
@@ -358,12 +360,6 @@ class Component(System):
         for key, dct in self._declared_partials.items():
             of, wrt = key
             self._declare_partials(of, wrt, dct)
-
-        if self.matrix_free and self._subjacs_info:
-            issue_warning("matrix free component has declared the following "
-                          f"partials: {sorted(self._subjacs_info)}, which will allocate "
-                          "(possibly unnecessary) memory for each of those sub-jacobians.",
-                          prefix=self.msginfo, category=DerivativesWarning)
 
     def setup_partials(self):
         """
@@ -400,6 +396,8 @@ class Component(System):
         if ('*', '*') in self._declared_partials:
             return
 
+        # keep old default behavior where matrix free components are assumed to have
+        # 'dense' whole variable to whole variable partials if no partials are declared.
         if self.matrix_free and not self._declared_partials:
             return
 
@@ -502,7 +500,7 @@ class Component(System):
                     self._subjacs_info[abs_key]['sparsity'] = tup
 
     def add_input(self, name, val=1.0, shape=None, units=None, desc='', tags=None,
-                  shape_by_conn=False, copy_shape=None, distributed=None):
+                  shape_by_conn=False, copy_shape=None, compute_shape=None, distributed=None):
         """
         Add an input variable to the component.
 
@@ -528,6 +526,9 @@ class Component(System):
         copy_shape : str or None
             If a str, that str is the name of a variable. Shape this input to match that of
             the named variable.
+        compute_shape : function
+            A function taking a dict arg containing names and shapes of this component's outputs
+            and returning the shape of this input.
         distributed : bool
             If True, this variable is a distributed variable, so it can have different sizes/values
             across MPI processes.
@@ -557,12 +558,24 @@ class Component(System):
         if tags is not None and not isinstance(tags, (str, list)):
             raise TypeError('The tags argument should be a str or list')
 
-        if (shape_by_conn or copy_shape):
+        if copy_shape and compute_shape:
+            raise ValueError(f"{self.msginfo}: Only one of 'copy_shape' or 'compute_shape' can "
+                             "be specified.")
+
+        if copy_shape and not isinstance(copy_shape, str):
+            raise TypeError(f"{self.msginfo}: The copy_shape argument should be a str or None but "
+                            f"a '{type(copy_shape).__name__}' was given.")
+
+        if compute_shape and not isinstance(compute_shape, types.FunctionType):
+            raise TypeError(f"{self.msginfo}: The compute_shape argument should be a function but "
+                            f"a '{type(compute_shape).__name__}' was given.")
+
+        if (shape_by_conn or copy_shape or compute_shape):
             if shape is not None or ndim(val) > 0:
-                raise ValueError("%s: If shape is to be set dynamically using 'shape_by_conn' or "
-                                 "'copy_shape', 'shape' and 'val' should be a scalar, "
-                                 "but shape of '%s' and val of '%s' was given for variable '%s'."
-                                 % (self.msginfo, shape, val, name))
+                raise ValueError("%s: If shape is to be set dynamically using 'shape_by_conn', "
+                                 "'copy_shape', or 'compute_shape', 'shape' and 'val' should be a "
+                                 "scalar, but shape of '%s' and val of '%s' was given for variable"
+                                 " '%s'." % (self.msginfo, shape, val, name))
         else:
             # value, shape: based on args, making sure they are compatible
             val, shape = ensure_compatible(name, val, shape)
@@ -589,6 +602,7 @@ class Component(System):
             'distributed': distributed,
             'tags': make_set(tags),
             'shape_by_conn': shape_by_conn,
+            'compute_shape': compute_shape,
             'copy_shape': copy_shape,
         })
 
@@ -671,7 +685,7 @@ class Component(System):
 
     def add_output(self, name, val=1.0, shape=None, units=None, res_units=None, desc='',
                    lower=None, upper=None, ref=1.0, ref0=0.0, res_ref=None, tags=None,
-                   shape_by_conn=False, copy_shape=None, distributed=None):
+                   shape_by_conn=False, copy_shape=None, compute_shape=None, distributed=None):
         """
         Add an output variable to the component.
 
@@ -719,6 +733,9 @@ class Component(System):
         copy_shape : str or None
             If a str, that str is the name of a variable. Shape this output to match that of
             the named variable.
+        compute_shape : function
+            A function taking a dict arg containing names and shapes of this component's inputs
+            and returning the shape of this output.
         distributed : bool
             If True, this variable is a distributed variable, so it can have different sizes/values
             across MPI processes.
@@ -731,10 +748,10 @@ class Component(System):
         global _allowed_types
 
         # First, type check all arguments
-        if (shape_by_conn or copy_shape) and (shape is not None or ndim(val) > 0):
-            raise ValueError("%s: If shape is to be set dynamically using 'shape_by_conn' or "
-                             "'copy_shape', 'shape' and 'val' should be scalar, "
-                             "but shape of '%s' and val of '%s' was given for variable '%s'."
+        if (shape_by_conn or copy_shape or compute_shape) and (shape is not None or ndim(val) > 0):
+            raise ValueError("%s: If shape is to be set dynamically using 'shape_by_conn', "
+                             "'copy_shape', or 'compute_shape', 'shape' and 'val' should be scalar,"
+                             " but shape of '%s' and val of '%s' was given for variable '%s'."
                              % (self.msginfo, shape, val, name))
 
         if not isinstance(name, str):
@@ -759,7 +776,7 @@ class Component(System):
         if tags is not None and not isinstance(tags, (str, set, list)):
             raise TypeError('The tags argument should be a str, set, or list')
 
-        if not (copy_shape or shape_by_conn):
+        if not (copy_shape or shape_by_conn or compute_shape):
             if not isscalar(val) and not isinstance(val, _allowed_types):
                 msg = '%s: The val argument should be a float, list, tuple, ndarray or Iterable'
                 raise TypeError(msg % self.msginfo)
@@ -813,6 +830,18 @@ class Component(System):
             # using ._dict below to avoid tons of deprecation warnings
             distributed = distributed or self.options._dict['distributed']['val']
 
+        if copy_shape and compute_shape:
+            raise ValueError(f"{self.msginfo}: Only one of 'copy_shape' or 'compute_shape' can "
+                             "be specified.")
+
+        if copy_shape and not isinstance(copy_shape, str):
+            raise TypeError(f"{self.msginfo}: The copy_shape argument should be a str or None but "
+                            f"a '{type(copy_shape).__name__}' was given.")
+
+        if compute_shape and not isinstance(compute_shape, types.FunctionType):
+            raise TypeError(f"{self.msginfo}: The compute_shape argument should be a function but "
+                            f"a '{type(compute_shape).__name__}' was given.")
+
         metadata = {}
 
         metadata.update({
@@ -830,7 +859,8 @@ class Component(System):
             'lower': lower,
             'upper': upper,
             'shape_by_conn': shape_by_conn,
-            'copy_shape': copy_shape
+            'compute_shape': compute_shape,
+            'copy_shape': copy_shape,
         })
 
         # this will get reset later if comm size is 1
@@ -1126,6 +1156,14 @@ class Component(System):
 
         if dependent:
             meta['val'] = val
+
+            _val = val.data if issparse(val) else val
+            if np.all(_val == 0):
+                warn_deprecation(f'{self.msginfo}: d({of})/d({wrt}): Partial was declared to be '
+                                 f'exactly zero. This is inefficient and the declaration should '
+                                 f'be removed. In a future version of OpenMDAO this behavior '
+                                 f'will raise an error.')
+
             if rows is not None:
                 rows = np.array(rows, dtype=INT_DTYPE, copy=False)
                 cols = np.array(cols, dtype=INT_DTYPE, copy=False)
@@ -1408,6 +1446,7 @@ class Component(System):
         val = dct['val'] if 'val' in dct else None
         is_scalar = isscalar(val)
         dependent = dct['dependent']
+        matfree = self.matrix_free
 
         if dependent:
             if 'rows' in dct and dct['rows'] is not None:  # sparse list format
@@ -1429,7 +1468,7 @@ class Component(System):
                                          'must be a scalar or have the same shape, val: {}, '
                                          'rows/cols: {}'.format(self.msginfo, of, wrt,
                                                                 val.shape, rows.shape))
-                else:
+                elif not matfree:
                     val = np.zeros_like(rows, dtype=float)
 
                 if rows.size > 0:
@@ -1509,7 +1548,7 @@ class Component(System):
                             # distributed vars are allowed to have zero size outputs on some procs
                             cols_max = -1
 
-                if val is None:
+                if val is None and not matfree:
                     # we can only get here if rows is None  (we're not sparse list format)
                     meta['val'] = np.zeros(shape)
                 elif is_array:
@@ -1636,7 +1675,8 @@ class Component(System):
                     if not self._coloring_info['dynamic']:
                         coloring._check_config_partial(self)
                     self._update_subjac_sparsity(coloring.get_subjac_sparsity())
-                self._jacobian._restore_approx_sparsity()
+                if self._jacobian is not None:
+                    self._jacobian._restore_approx_sparsity()
 
     def _resolve_src_inds(self):
         abs2prom = self._var_abs2prom['input']

@@ -183,16 +183,16 @@
                                     "desc": "",
                                     "units": "None",
                                     "val": [
-                                        1.0
+                                        12.058488150803932
                                     ],
                                     "val_min_indices": [
                                         0
                                     ],
-                                    "val_min": 1.0,
+                                    "val_min": 12.058488150803932,
                                     "val_max_indices": [
                                         0
                                     ],
-                                    "val_max": 1.0
+                                    "val_max": 12.058488150803932
                                 },
                                 {
                                     "name": "y2_command",
@@ -205,16 +205,16 @@
                                     "implicit": true,
                                     "units": "None",
                                     "val": [
-                                        1.0
+                                        12.058488150803932
                                     ],
                                     "val_min_indices": [
                                         0
                                     ],
-                                    "val_min": 1.0,
+                                    "val_min": 12.058488150803932,
                                     "val_max_indices": [
                                         0
                                     ],
-                                    "val_max": 1.0
+                                    "val_max": 12.058488150803932
                                 }
                             ],
                             "options": {
@@ -296,16 +296,16 @@
                             "desc": "",
                             "units": "None",
                             "val": [
-                                1.0
+                                12.058488150803932
                             ],
                             "val_min_indices": [
                                 0
                             ],
-                            "val_min": 1.0,
+                            "val_min": 12.058488150803932,
                             "val_max_indices": [
                                 0
                             ],
-                            "val_max": 1.0
+                            "val_max": 12.058488150803932
                         },
                         {
                             "name": "y1",
@@ -318,16 +318,16 @@
                             "implicit": false,
                             "units": "None",
                             "val": [
-                                1.0
+                                25.588302369839212
                             ],
                             "val_min_indices": [
                                 0
                             ],
-                            "val_min": 1.0,
+                            "val_min": 25.588302369839212,
                             "val_max_indices": [
                                 0
                             ],
-                            "val_max": 1.0
+                            "val_max": 25.588302369839212
                         }
                     ],
                     "options": {
@@ -381,16 +381,16 @@
                             "desc": "",
                             "units": "None",
                             "val": [
-                                1.0
+                                25.588302369839212
                             ],
                             "val_min_indices": [
                                 0
                             ],
-                            "val_min": 1.0,
+                            "val_min": 25.588302369839212,
                             "val_max_indices": [
                                 0
                             ],
-                            "val_max": 1.0
+                            "val_max": 25.588302369839212
                         },
                         {
                             "name": "y2",
@@ -403,16 +403,16 @@
                             "implicit": false,
                             "units": "None",
                             "val": [
-                                1.0
+                                12.058488150803932
                             ],
                             "val_min_indices": [
                                 0
                             ],
-                            "val_min": 1.0,
+                            "val_min": 12.058488150803932,
                             "val_max_indices": [
                                 0
                             ],
-                            "val_max": 1.0
+                            "val_max": 12.058488150803932
                         }
                     ],
                     "options": {
@@ -473,16 +473,16 @@
                     "desc": "",
                     "units": "None",
                     "val": [
-                        1.0
+                        25.588302369839212
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": 25.588302369839212,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": 25.588302369839212
                 },
                 {
                     "name": "y2",
@@ -494,16 +494,16 @@
                     "desc": "",
                     "units": "None",
                     "val": [
-                        1.0
+                        12.058488150803932
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": 12.058488150803932,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": 12.058488150803932
                 },
                 {
                     "name": "z",
@@ -538,16 +538,16 @@
                     "implicit": false,
                     "units": "None",
                     "val": [
-                        1.0
+                        28.58830816498059
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": 28.58830816498059,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": 28.58830816498059
                 }
             ],
             "options": {
@@ -586,16 +586,16 @@
                     "desc": "",
                     "units": "None",
                     "val": [
-                        1.0
+                        25.588302369839212
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": 25.588302369839212,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": 25.588302369839212
                 },
                 {
                     "name": "con1",
@@ -608,16 +608,16 @@
                     "implicit": false,
                     "units": "None",
                     "val": [
-                        1.0
+                        -22.428302369839212
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": -22.428302369839212,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": -22.428302369839212
                 }
             ],
             "options": {
@@ -656,16 +656,16 @@
                     "desc": "",
                     "units": "None",
                     "val": [
-                        1.0
+                        12.058488150803932
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": 12.058488150803932,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": 12.058488150803932
                 },
                 {
                     "name": "con2",
@@ -678,16 +678,16 @@
                     "implicit": false,
                     "units": "None",
                     "val": [
-                        1.0
+                        -11.941511849196068
                     ],
                     "val_min_indices": [
                         0
                     ],
-                    "val_min": 1.0,
+                    "val_min": -11.941511849196068,
                     "val_max_indices": [
                         0
                     ],
-                    "val_max": 1.0
+                    "val_max": -11.941511849196068
                 }
             ],
             "options": {

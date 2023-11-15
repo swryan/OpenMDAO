@@ -200,7 +200,7 @@ def issue_warning(msg, prefix='', stacklevel=2, category=OpenMDAOWarning):
     """
     old_format = warnings.formatwarning
     warnings.formatwarning = _warn_simple_format
-    _msg = f'{prefix}: {msg}' if prefix else f'{msg}'
+    _msg = f'{prefix}: {msg}' if prefix else msg
     try:
         warnings.warn(_msg, category=category, stacklevel=stacklevel)
     finally:
@@ -223,7 +223,7 @@ def _make_table(superclass=OpenMDAOWarning):
     name_header = "Warning Class"
     desc_header = "Description"
     print(f'| {name_header:<{max_name_len}} | {desc_header:<{max_desc_len}} |', file=s)
-    print(f'| {max_name_len*"-"} | {max_desc_len*"-"} |', file=s)
+    print(f'| {max_name_len * "-"} | {max_desc_len * "-"} |', file=s)
 
     for _class in _warnings:
         if isinstance(_class, superclass) or issubclass(_class, superclass):

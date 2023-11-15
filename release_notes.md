@@ -1,4 +1,118 @@
 ***********************************
+# Release Notes for OpenMDAO 3.29.0
+
+October 20, 2023
+
+Key improvements in this release include the implementation of POEM 092, which allows users to define
+a pre-processor function for options. This can be used to facilitate processing of options, such as
+handling unit conversions.
+
+POEM 091 forces a component to use _either_ jacobian-based partials or the matrix-free API. Using both
+is no longer allowed.
+
+Finally, POEM 038 is implemented which currently raises a deprecation error if a user
+declares a partial whose value is exactly zero. In the future this will be an error,
+since the "correct" behavior is to not declare such partials at all.
+
+The coloring report has been reimplemented in bokeh and is more interactive. Users with problems
+whose systems exhibit significant sparsity may find this useful.
+
+Key bug fixes include a fix for a problem where Submodel components weren't working properly in complex-step mode.
+Also, the relatively new `add_residual` feature wasn't able to be called during configure. This has been fixed.
+
+## New Deprecations
+
+- Declaring partials with values equal to exactly zero will now result in a deprecation warning, and in the future will result in an error. [#3050](https://github.com/OpenMDAO/OpenMDAO/pull/3050)
+
+## Backwards Incompatible API Changes
+
+- None
+
+## Backwards Incompatible Non-API Changes
+
+- None
+
+## New Features
+
+- Updated the coloring report to use bokeh for visualization. [#3013](https://github.com/OpenMDAO/OpenMDAO/pull/3013)
+- Implemented POEM 092: Allow users to define a preprocessor function for option sets. [#3040](https://github.com/OpenMDAO/OpenMDAO/pull/3040)
+- Added a warning when an excludes or includes recording option has no matches [#3039](https://github.com/OpenMDAO/OpenMDAO/pull/3039)
+- Added the option to not include values in the N2 diagram [#3022](https://github.com/OpenMDAO/OpenMDAO/pull/3022)
+- Implemented POEM 038: `declare_partials` now warns if val == 0. [#3050](https://github.com/OpenMDAO/OpenMDAO/pull/3050)
+- Implemented POEM 091: Each Component must now be either matrix free or jacobian based. [#3020](https://github.com/OpenMDAO/OpenMDAO/pull/3020)
+
+## Bug Fixes
+
+- Fixed a bug where the SubModel was never set to complex step mode. [#3042](https://github.com/OpenMDAO/OpenMDAO/pull/3042)
+- Fixed issue that was preventing `add_residual` from being called during configure. [#3031](https://github.com/OpenMDAO/OpenMDAO/pull/3031)
+- Fixed the `openmdao n2` command to work properly with subproblems [#3029](https://github.com/OpenMDAO/OpenMDAO/pull/3029)
+- Fixed an issue where the desvars and responses are sorted in a different order if the number of procs is less than the number of subsystems in a parallel group. [#3028](https://github.com/OpenMDAO/OpenMDAO/pull/3028)
+- Fixed doc error describing 'openmdao timing' [#3015](https://github.com/OpenMDAO/OpenMDAO/pull/3015)
+- Fixed an uncaught TypeError in the Dymos Linkage report [#3011](https://github.com/OpenMDAO/OpenMDAO/pull/3011)
+
+## Miscellaneous
+
+- Updated baseline dependency versions for Windows testing [#3051](https://github.com/OpenMDAO/OpenMDAO/pull/3051)
+- Updated 'latest' workflow for Python 3.12 compatibility [#3044](https://github.com/OpenMDAO/OpenMDAO/pull/3044)
+- Fixed a broken link in the documentation [#3036](https://github.com/OpenMDAO/OpenMDAO/pull/3036)
+- Cleaned up some deprecations in the OpenMDAO code base [#3035](https://github.com/OpenMDAO/OpenMDAO/pull/3035)
+- Changed bug report template so that entire example section isn't rendered as python. [#3021](https://github.com/OpenMDAO/OpenMDAO/pull/3021)
+
+***********************************
+# Release Notes for OpenMDAO 3.28.0
+
+August 30, 2023
+
+This release adds an improvement to dynamic shaping of inputs and outputs that
+allows the user to specify a function which computes shapes based on the shapes of other inputs and outputs.
+
+It also adds an auto_order option to Group which will automatically sort the components not
+involved in cycles to eliminate unnecessary feedback.
+
+## New Deprecations
+
+- None
+
+## Backwards Incompatible API Changes
+
+- None
+
+## Backwards Incompatible Non-API Changes
+
+- None
+
+## New Features
+
+- Raise exception when calling add_input on an IndepVarComp [#2966](https://github.com/OpenMDAO/OpenMDAO/pull/2966)
+- Added argument to show_options_table to allow the attribute name of the options table to be passed. [#2970](https://github.com/OpenMDAO/OpenMDAO/pull/2970)
+- Changed the 'hist_file' and 'hotstart_file' attributes on pyOptSparseDriver to options [#2989](https://github.com/OpenMDAO/OpenMDAO/pull/2989)
+- Added a relevance check for constraints to the `run_driver` function [#2997](https://github.com/OpenMDAO/OpenMDAO/pull/2997)
+- Implemented POEM 87: Expand Functionality of Dynamic Shaping [#3000](https://github.com/OpenMDAO/OpenMDAO/pull/3000)
+- Disabled guess_nonlinear when the solver option restart_from_successful is activated [#3003](https://github.com/OpenMDAO/OpenMDAO/pull/3003)
+- Implemented POEM 090: Added 'auto_order' option to Group. [#2963](https://github.com/OpenMDAO/OpenMDAO/pull/2963)
+- Implemented POEM 088: Enabled custom load_case methods for System. [#2937](https://github.com/OpenMDAO/OpenMDAO/pull/2937)
+
+## Bug Fixes
+
+- Added check for valid 'return_format' argument to list_inputs/list_outputs [#2965](https://github.com/OpenMDAO/OpenMDAO/pull/2965)
+- Fixed regression introduced in pre_opt_post PR [#2973](https://github.com/OpenMDAO/OpenMDAO/pull/2973)
+- Fixed issue where show_options_table failed when given an OptionsDictionary [#2982](https://github.com/OpenMDAO/OpenMDAO/pull/2982)
+- MPI fixes for Aviary issues [#2983](https://github.com/OpenMDAO/OpenMDAO/pull/2983)
+- Parallel derivatives bug was caused by treating AutoIVC vars as distributed when connected to remote vars [#2998](https://github.com/OpenMDAO/OpenMDAO/pull/2998)
+- Some SubmodelComp MPI fixes for Aviary plus a few misc. fixes [#2999](https://github.com/OpenMDAO/OpenMDAO/pull/2999)
+
+## Miscellaneous
+
+- Updated some GUI tests to be skipped if playwright is not installed [#2959](https://github.com/OpenMDAO/OpenMDAO/pull/2959)
+- Updated Note for doc pages that require MPI and may not work with Colab/Binder [#2975](https://github.com/OpenMDAO/OpenMDAO/pull/2975)
+- Added "how we do testing" document to the developer docs. [#2977](https://github.com/OpenMDAO/OpenMDAO/pull/2977)
+- Added information about installing MPI/PETSc to the "Getting Started" doc [#2979](https://github.com/OpenMDAO/OpenMDAO/pull/2979)
+- Updated documentation to highlight case where matrix-free derivatives are required [#2981](https://github.com/OpenMDAO/OpenMDAO/pull/2981)
+- Improved relevance graph [#2984](https://github.com/OpenMDAO/OpenMDAO/pull/2984)
+- Updated support for `jax` to require Python 3.8 and jax>=0.4.0 [#2991](https://github.com/OpenMDAO/OpenMDAO/pull/2991)
+- Updated logic in the documentation upload utility to handle valid version tags. [#2994](https://github.com/OpenMDAO/OpenMDAO/pull/2994)
+
+***********************************
 # Release Notes for OpenMDAO 3.27.0
 
 June 26, 2023

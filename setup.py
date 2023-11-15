@@ -23,7 +23,7 @@ optional_dependencies = {
         'ipyparallel'
     ],
     'doe': [
-        'pyDOE2'
+        'pyDOE3'
     ],
     'jax': [
         'jax>=0.4.0; python_version>="3.8"',
@@ -34,7 +34,7 @@ optional_dependencies = {
         'ipympl'
     ],
     'visualization': [
-        'bokeh>=1.3.4',
+        'bokeh>=2.4.0',
         'matplotlib',
         'colorama'
     ],
