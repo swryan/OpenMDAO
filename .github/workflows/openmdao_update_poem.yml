@@ -25,19 +25,6 @@ jobs:
           echo "Initiated by: ${GITHUB_ACTOR}"
           echo "============================================================="
 
-      - name: Dump GitHub context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github) }}
-        run: |
-          echo "$GITHUB_CONTEXT"
-
-      - name: Dump GitHub pull request context
-        env:
-          GITHUB_CONTEXT: ${{ toJson(github.event.pull_request) }}
-        run: |
-          echo "$GITHUB_CONTEXT"
-
-
       - name: Check for Associated POEM
         id: check_poem
         env:
@@ -92,16 +79,11 @@ jobs:
 
           echo "POEM_ID=$POEM_ID" >> $GITHUB_OUTPUT
 
-          echo "${{  github.event.pull_request.merged }}"
-          if [[ "${{  github.event.pull_request.merged }}" == "true" ]]; then
-            echo "pull request merged, should trigger POEM update"
-          fi
-
       - name: Update POEM status
         if: github.event.pull_request.merged == 'true' && steps.update_poem.outputs.POEM_ID != ''
         uses: benc-uk/workflow-dispatch@v1
         with:
           repo: ${{ github.repository_owner }}/POEMs
           workflow: Update POEM status to Integrated
-          inputs: '{ "poem_integrated": "${{ steps.update_poem.outputs.POEM_ID }}" }'
+          inputs: '{ "poem_integrated": "${{ steps.check_poem.outputs.POEM_ID }}" }'
           token: ${{ secrets.ACCESS_TOKEN }}
