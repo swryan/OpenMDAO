@@ -1,9 +1,14 @@
-name: Update status of associated POEM
+# Check if pull request resolves an issue that is assocaited with a POEM
+# If pull request is merged, update the status of any associated POEM to Integrated
+
+name: Check/Update Associated POEM
 
 on:
   pull_request_target:
-    types:
-      - closed
+    types: [ closed ]
+    branches: [ master ]
+
+permissions: {}
 
 jobs:
 
@@ -26,7 +31,7 @@ jobs:
           echo "============================================================="
 
       - name: Check for Associated POEM
-        id: check_poem
+        id: check_for_poem
         env:
           BODY: ${{ github.event.pull_request.body }}
           GH_TOKEN: ${{ github.token }}
@@ -80,10 +85,10 @@ jobs:
           echo "POEM_ID=$POEM_ID" >> $GITHUB_OUTPUT
 
       - name: Update POEM status
-        if: github.event.pull_request.merged == true && steps.check_poem.outputs.POEM_ID != ''
+        if: github.event.pull_request.merged == true && steps.check_for_poem.outputs.POEM_ID != ''
         uses: benc-uk/workflow-dispatch@v1
         with:
           repo: ${{ github.repository_owner }}/POEMs
           workflow: Update POEM status to Integrated
-          inputs: '{ "poem_integrated": "${{ steps.check_poem.outputs.POEM_ID }}" }'
+          inputs: '{ "poem_integrated": "${{ steps.check_for_poem.outputs.POEM_ID }}" }'
           token: ${{ secrets.ACCESS_TOKEN }}
