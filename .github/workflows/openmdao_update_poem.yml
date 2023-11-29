@@ -96,12 +96,15 @@ jobs:
         uses: actions/github-script@v7
         with:
           github-token: ${{secrets.GITHUB_TOKEN}}
+          env:
+            POEM_ID: ${{ steps.check_for_poem.outputs.POEM_ID }}
+            POEM_URL: ${{ github.server_url }}/${{ github.repository_owner }}/POEMs/blob/master/POEM_${{ steps.check_for_poem.outputs.POEM_ID }}.md
           script: |
             github.rest.issues.createComment({
               issue_number: ${{ github.event.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: 'This pull request will transition POEM_${{ steps.check_for_poem.outputs.POEM_ID }} to `Integrated`'
+              body: 'This pull request will transition [POEM_${{ env.POEM_ID }}](${{ env.POEM_URL }}) to `Integrated`'
             })
 
       - name: Slack POEM message
