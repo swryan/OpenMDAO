@@ -92,7 +92,7 @@ jobs:
         with:
           script: |
             github.rest.issues.createComment({
-              issue_number: github.event.number,
+              issue_number: ${{ github.event.number }},
               owner: context.repo.owner,
               repo: context.repo.repo,
               body: 'This pull request #${{ github.event.number }} will transition POEM_${{ steps.check_for_poem.outputs.POEM_ID }} to `Integrated`'
