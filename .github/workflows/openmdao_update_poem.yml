@@ -93,9 +93,9 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           status: 'warning'
           message: |
-            Pull Request (#${{ github.event.number}})[${{ github.server_url }}/${{ github.repository }}/pull/${{ github.run_id }}]
-            will transition (POEM_${{ steps.check_for_poem.outputs.POEM_ID }})[${{ github.server_url }}/OpenMDAO/POEMs/blob/master/POEM_091.md]
-            to `Integrated`
+            Pull Request #${{ github.event.number}} will transition POEM_${{ steps.check_for_poem.outputs.POEM_ID }} to `Integrated`
+            ${{ github.server_url }}/${{ github.repository }}/pull/${{ github.run_id }}
+            ${{ github.server_url }}/OpenMDAO/POEMs/blob/master/POEM_091.md
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Update POEM status
