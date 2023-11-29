@@ -78,7 +78,7 @@ jobs:
           if [[ "$POEM_ID" ]]; then
             echo "----------------------"
             POEM_ID=$(echo $POEM_ID | tr -d '\n\t\r ')
-            echo "This Pull Request will mark POEM $POEM_ID as Integrated"
+            echo "This Pull Request will transition POEM $POEM_ID to Integrated"
             echo "----------------------"
           fi
 
@@ -87,14 +87,11 @@ jobs:
       - name: Slack POEM warning
         if: github.event.action == 'opened' && steps.check_for_poem.outputs.POEM_ID != ''
         uses: act10ns/slack@v2.0.0
-        env:
-          PULL_ID: ${{ github.event.number}}
-          POEM_ID: ${{ steps.check_for_poem.outputs.POEM_ID }}
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           status: 'warning'
           message: |
-            Pull Request #$PULL_ID will transition POEM $POEM_ID to `Integrated`
+            Pull Request #${{ github.event.number}} will transition POEM_${{ steps.check_for_poem.outputs.POEM_ID }} to `Integrated`
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Update POEM status
