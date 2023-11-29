@@ -5,7 +5,7 @@ name: Check/Update Associated POEM
 
 on:
   pull_request_target:
-    types: [ closed ]
+    types: [ opened, closed ]
     branches: [ master ]
 
 permissions: {}
@@ -25,8 +25,9 @@ jobs:
           echo "============================================================="
           echo "Run #${GITHUB_RUN_NUMBER}"
           echo "Run ID: ${GITHUB_RUN_ID}"
+          echo
           echo "Repository:   ${GITHUB_REPOSITORY}"
-          echo "Triggered by: ${GITHUB_EVENT_NAME}"
+          echo "Triggered by: ${{ github.event_name }} ${{ github.event }}"
           echo "Initiated by: ${GITHUB_ACTOR}"
           echo "============================================================="
 
@@ -74,15 +75,27 @@ jobs:
             fi
           done <<< "$ISSUE_TEXT"
 
-          echo "----------------------"
-
-          POEM_ID=$(echo $POEM_ID | tr -d '\n\t\r ')
-
-          echo "POEM ID: $POEM_ID"
-
-          echo "----------------------"
+          if [[ "$POEM_ID" ]]; then
+            echo "----------------------"
+            POEM_ID=$(echo $POEM_ID | tr -d '\n\t\r ')
+            echo "This Pull Request will mark POEM $POEM_ID as Integrated"
+            echo "----------------------"
+          fi
 
           echo "POEM_ID=$POEM_ID" >> $GITHUB_OUTPUT
+
+      - name: Slack POEM warning
+        if: github.event.action == 'opened' && steps.check_for_poem.outputs.POEM_ID != ''
+        uses: act10ns/slack@v2.0.0
+        env:
+          PULL_ID: ${{ github.event.number}}
+          POEM_ID: ${{ steps.check_for_poem.outputs.POEM_ID }}
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: 'warning'
+          message: |
+            Pull Request #$PULL_ID will transition POEM $POEM_ID to `Integrated`
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Update POEM status
         if: github.event.pull_request.merged == true && steps.check_for_poem.outputs.POEM_ID != ''
