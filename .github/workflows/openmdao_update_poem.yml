@@ -44,7 +44,7 @@ jobs:
           PR_NUMBER: ${{ github.event.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          POEM_ID=$(python ../.github/scripts/get_poem_id.py $PR_NUMBER)
+          POEM_ID=$(python ../../.github/scripts/get_poem_id.py $PR_NUMBER)
 
           echo "POEM_ID: $POEM_ID"
 
