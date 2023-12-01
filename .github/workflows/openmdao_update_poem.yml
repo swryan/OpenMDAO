@@ -41,7 +41,6 @@ jobs:
       - name: Check for Associated POEM
         id: check_for_poem
         env:
-        env:
           PR_NUMBER: ${{ github.event.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
