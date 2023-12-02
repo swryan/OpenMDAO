@@ -59,7 +59,7 @@ def get_poem_id(repository, pull_id):
     print("-------------------------------------------------------------------------------")
 
     # for debugging only
-    # repository = 'OpenMDAO/OpenMDAO'
+    repository = 'OpenMDAO/OpenMDAO'
 
     try:
         issue_json = subprocess.check_output(["gh", "--repo", repository,
