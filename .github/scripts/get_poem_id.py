@@ -27,8 +27,12 @@ def get_poem_id(repository, pull_id):
     print("-------------------------------------------------------------------------------")
     print(f"Checking Pull Request #{pull_id} for associated issue...")
     print("-------------------------------------------------------------------------------")
-    pull_json = subprocess.check_output(["gh", "--repo", repository,
-                                         "issue", "view", "--json", "body", pull_id])
+    try:
+        pull_json = subprocess.check_output(["gh", "--repo", repository,
+                                            "issue", "view", "--json", "body", pull_id])
+    except subprocess.CalledProcessError as err:
+        print(f"Unable to access pull request #{pull_id}:\n{str(err.nmessage)}")
+        return ERROR
 
     pull_body = json.loads(pull_json)["body"]
 
@@ -52,8 +56,15 @@ def get_poem_id(repository, pull_id):
     print(f"Checking Issue #{issue_id} for associated POEM...")
     print("-------------------------------------------------------------------------------")
 
-    issue_json = subprocess.check_output(["gh", "--repo", repository,
-                                          "issue", "view", "--json", "body", issue_id])
+    # for debugging only
+    # repository = 'OpenMDAO/OpenMDAO'
+
+    try:
+        issue_json = subprocess.check_output(["gh", "--repo", repository,
+                                            "issue", "view", "--json", "body", issue_id])
+    except subprocess.CalledProcessError as err:
+        print(f"Unable to access issue #{issue_id}:\n{str(err.nmessage)}")
+        return ERROR
 
     issue_body = json.loads(issue_json)["body"]
 
