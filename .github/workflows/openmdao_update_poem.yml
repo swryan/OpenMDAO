@@ -38,7 +38,9 @@ jobs:
           echo "Initiated by: ${GITHUB_ACTOR}"
           echo "============================================================="
 
-      - name: Check for Associated POEM
+    - uses: actions/checkout@v3
+
+    - name: Check for Associated POEM
         id: check_for_poem
         env:
           PR_NUMBER: ${{ github.event.number }}
