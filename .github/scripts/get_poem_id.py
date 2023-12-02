@@ -88,4 +88,4 @@ def get_poem_id(repository, pull_id):
 
 
 if __name__ == '__main__':
-    exit(get_poem_id(sys.argv[1]))
+    exit(get_poem_id(sys.argv[1], sys.argv[2]))
