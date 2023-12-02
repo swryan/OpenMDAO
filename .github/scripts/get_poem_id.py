@@ -8,12 +8,14 @@ NOT_FOUND = 0
 ERROR = -1
 
 
-def get_poem_id(pull_id):
+def get_poem_id(repository, pull_id):
     """
     Read the body of a pull request from stdin, write ID of any associated POEM to stdout.
 
     Parameters
     ----------
+    repository : str
+        The owner and repository name. For example, 'octocat/Hello-World'.
     pull_id : str
         The id of a pull request.
 
@@ -25,7 +27,7 @@ def get_poem_id(pull_id):
     print("-------------------------------------------------------------------------------")
     print(f"Checking Pull Request #{pull_id} for associated issue...")
     print("-------------------------------------------------------------------------------")
-    pull_json = subprocess.check_output(["gh", "--repo", "OpenMDAO/OpenMDAO",
+    pull_json = subprocess.check_output(["gh", "--repo", repository,
                                          "issue", "view", "--json", "body", pull_id])
 
     pull_body = json.loads(pull_json)["body"]
@@ -50,7 +52,7 @@ def get_poem_id(pull_id):
     print(f"Checking Issue #{issue_id} for associated POEM...")
     print("-------------------------------------------------------------------------------")
 
-    issue_json = subprocess.check_output(["gh", "--repo", "OpenMDAO/OpenMDAO",
+    issue_json = subprocess.check_output(["gh", "--repo", repository,
                                           "issue", "view", "--json", "body", issue_id])
 
     issue_body = json.loads(issue_json)["body"]
