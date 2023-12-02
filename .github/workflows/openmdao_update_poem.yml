@@ -50,7 +50,7 @@ jobs:
 
           echo "POEM_ID: $POEM_ID"
 
-          if [[ $POEM_ID -ne 0 ]]; then
+          if [[ "$POEM_ID" -gt "0" ]]; then
             echo "POEM_ID=$POEM_ID" >> $GITHUB_OUTPUT
           else
             echo "POEM_ID=''" >> $GITHUB_OUTPUT
