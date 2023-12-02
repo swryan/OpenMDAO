@@ -31,7 +31,7 @@ def get_poem_id(repository, pull_id):
         pull_json = subprocess.check_output(["gh", "--repo", repository,
                                             "issue", "view", "--json", "body", pull_id])
     except subprocess.CalledProcessError as err:
-        print(f"Unable to access pull request #{pull_id}:\nrc={err.returncode}\n{str(err.output)}")
+        print(f"Unable to access pull request #{pull_id}:\nrc={err.returncode}")
         return ERROR
 
     pull_body = json.loads(pull_json)["body"]
@@ -63,7 +63,7 @@ def get_poem_id(repository, pull_id):
         issue_json = subprocess.check_output(["gh", "--repo", repository,
                                             "issue", "view", "--json", "body", issue_id])
     except subprocess.CalledProcessError as err:
-        print(f"Unable to access issue  #{issue_id}:\nrc={err.returncode}\n{str(err.output)}")
+        print(f"Unable to access issue  #{issue_id}:\nrc={err.returncode}")
         return ERROR
 
     issue_body = json.loads(issue_json)["body"]
