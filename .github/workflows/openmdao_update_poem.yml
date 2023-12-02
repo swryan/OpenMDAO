@@ -46,12 +46,8 @@ jobs:
           PR_NUMBER: ${{ github.event.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          POEM_ID=$(python .github/scripts/get_poem_id.py ${GITHUB_REPOSITORY} $PR_NUMBER)
-
-          echo "POEM_ID: $POEM_ID"
-
-          if [[ $POEM_ID -ne 0 ]]; then
-            echo "POEM_ID=$POEM_ID" >> $GITHUB_OUTPUT
+          if python .github/scripts/get_poem_id.py ${GITHUB_REPOSITORY} $PR_NUMBER; then
+            cat POEM_ID.txt >> $GITHUB_OUTPUT
           else
             echo "POEM_ID=''" >> $GITHUB_OUTPUT
           fi
@@ -73,7 +69,7 @@ jobs:
             })
 
       - name: Slack POEM message
-        if: github.event.action == 'opened' && steps.check_for_poem.outputs.POEM_ID != ''
+        if: (github.event.action == 'opened' || github.event.action == 'reopened') && steps.check_for_poem.outputs.POEM_ID != ''
         uses: act10ns/slack@v2.0.0
         with:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}

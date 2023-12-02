@@ -4,13 +4,15 @@ import sys
 import subprocess
 import json
 
-NOT_FOUND = 0
-ERROR = -1
+FILENAME = 'POEM_ID.txt'
 
+SUCCESS = 0
+NOT_FOUND = 1
+ERROR = -1
 
 def get_poem_id(repository, pull_id):
     """
-    Read the body of a pull request from stdin, write ID of any associated POEM to stdout.
+    Read the body of a pull request from stdin, write ID of any associated POEM to FILENAME.
 
     Parameters
     ----------
@@ -31,7 +33,7 @@ def get_poem_id(repository, pull_id):
         pull_json = subprocess.check_output(["gh", "--repo", repository,
                                             "issue", "view", "--json", "body", pull_id])
     except subprocess.CalledProcessError as err:
-        print(f"Unable to access pull request #{pull_id}:\n{str(err.nmessage)}")
+        print(f"Unable to access pull request #{pull_id}:\nrc={err.returncode}")
         return ERROR
 
     pull_body = json.loads(pull_json)["body"]
@@ -57,13 +59,13 @@ def get_poem_id(repository, pull_id):
     print("-------------------------------------------------------------------------------")
 
     # for debugging only
-    # repository = 'OpenMDAO/OpenMDAO'
+    repository = 'OpenMDAO/OpenMDAO'
 
     try:
         issue_json = subprocess.check_output(["gh", "--repo", repository,
                                             "issue", "view", "--json", "body", issue_id])
     except subprocess.CalledProcessError as err:
-        print(f"Unable to access issue #{issue_id}:\n{str(err.nmessage)}")
+        print(f"Unable to access issue  #{issue_id}:\nrc={err.returncode}")
         return ERROR
 
     issue_body = json.loads(issue_json)["body"]
@@ -92,10 +94,12 @@ def get_poem_id(repository, pull_id):
         poem_id = poem_id[4:]
 
     if not poem_id.isnumeric():
-        # poem ID not found, could be blank or "_No response_"
+        # valid poem ID not found, could be blank or "_No response_"
         return NOT_FOUND
     else:
-        return int(poem_id)
+        with open(FILENAME, 'w') as f:
+            f.write(f"POEM_ID='{poem_id}'")
+        return SUCCESS
 
 
 if __name__ == '__main__':
