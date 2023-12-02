@@ -1,7 +1,7 @@
 # When a pull request is opened, check if it resolves an issue that is associated with a POEM
 # When pull request is merged, update the status of any associated POEM to Integrated
 
-name: Check/Update Associated POEM
+name: Update Associated POEM
 
 on:
   pull_request_target:
@@ -27,6 +27,8 @@ jobs:
         shell: bash -l {0}
 
     steps:
+      - uses: actions/checkout@v4
+
       - name: Display run details
         run: |
           echo "============================================================="
@@ -38,9 +40,7 @@ jobs:
           echo "Initiated by: ${GITHUB_ACTOR}"
           echo "============================================================="
 
-    - uses: actions/checkout@v3
-
-    - name: Check for Associated POEM
+      - name: Check for Associated POEM
         id: check_for_poem
         env:
           PR_NUMBER: ${{ github.event.number }}
