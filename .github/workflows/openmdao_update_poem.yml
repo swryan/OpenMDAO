@@ -46,13 +46,8 @@ jobs:
           PR_NUMBER: ${{ github.event.number }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          python .github/scripts/get_poem_id.py ${GITHUB_REPOSITORY} $PR_NUMBER
-
-          POEM_ID=$?
-          echo "POEM_ID: $POEM_ID"
-
-          if [[ "$POEM_ID" -gt "0" ]]; then
-            echo "POEM_ID=$POEM_ID" >> $GITHUB_OUTPUT
+          if python .github/scripts/get_poem_id.py ${GITHUB_REPOSITORY} $PR_NUMBER; then
+            cat POEM_ID.txt >> $GITHUB_OUTPUT
           else
             echo "POEM_ID=''" >> $GITHUB_OUTPUT
           fi
