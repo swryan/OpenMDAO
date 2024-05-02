@@ -293,9 +293,8 @@ jobs:
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
             if [[ "${{ matrix.SNOPT }}" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
-              echo "  > Secure copying SNOPT 7.7 over SSH"
-              mkdir SNOPT
-              scp -qr ${{ secrets.SNOPT_LOCATION }} SNOPT
+              echo "  > Secure copying SNOPT over SSH"
+              scp -qr ${{ secrets.SNOPT_LOCATION }} .
               cd SNOPT
               pwd
               ls
