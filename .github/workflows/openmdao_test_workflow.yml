@@ -292,7 +292,7 @@ jobs:
           echo "============================================================="
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
-            if [[ "${{ matrix.SNOPT }}" && "${{ matrix.SNOPT_LOCATION }}" ]]; then
+            if [[ "${{ matrix.SNOPT }}" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
               echo "  > Secure copying SNOPT 7.7 over SSH"
               mkdir SNOPT
               scp -qr ${{ secrets.SNOPT_LOCATION }} SNOPT
@@ -312,7 +312,10 @@ jobs:
               python -n numpy.f2py -c -m snopt snopt.pyf
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
 
-              cd ../..
+              cd ..
+              testflo pyoptsparse/tests --pre__anounce --show_skipped
+
+              cd ..
             fi
 
             conda install -c conda-forge pyoptsparse
