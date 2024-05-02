@@ -312,7 +312,11 @@ jobs:
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
 
               cd ..
+
+              cd pyoptsparse/tests
+              pip install sqlitedict
               testflo pyoptsparse/tests --pre_announce --show_skipped
+              cd ../..
 
               cd ..
             fi
