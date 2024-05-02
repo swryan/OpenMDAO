@@ -315,7 +315,7 @@ jobs:
 
               cd pyoptsparse/tests
               pip install sqlitedict
-              testflo pyoptsparse/tests --pre_announce --show_skipped
+              testflo --pre_announce --show_skipped
               cd ../..
 
               cd ..
