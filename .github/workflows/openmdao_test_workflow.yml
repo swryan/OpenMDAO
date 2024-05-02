@@ -203,10 +203,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Fetch tags
-        run: |
-          git fetch --prune --unshallow --tags
-
       - name: Setup conda
         uses: conda-incubator/setup-miniconda@v3
         with:
@@ -312,7 +308,7 @@ jobs:
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
             if [[ "${{ matrix.SNOPT }}" ]]; then
               echo "** Building SNOPT..."
-              conda install compilers meson
+              conda install compilers cmake meson
               cd $SNOPT_SOURCE/..
               ./configure
               make
@@ -501,6 +497,11 @@ jobs:
             echo "Install version of openssl compatible with hosting service"
             echo "============================================================="
             conda install -c conda-forge 'openssl=3.0'
+
+            echo "============================================================="
+            echo "Fetch tags to get docs version"
+            echo "============================================================="
+            git fetch --prune --unshallow --tags
 
             echo "============================================================="
             echo "Publish docs"
