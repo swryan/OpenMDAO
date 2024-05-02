@@ -321,7 +321,7 @@ jobs:
               cd ..
             fi
 
-            conda install -c conda-forge pyoptsparse
+            conda install -c conda-forge mdolab-baseclasses pyoptsparse
           else
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
