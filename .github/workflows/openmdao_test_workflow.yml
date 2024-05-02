@@ -309,7 +309,12 @@ jobs:
             if [[ "${{ matrix.SNOPT }}" ]]; then
               echo "** Building SNOPT..."
               conda install compilers cmake meson
+              echo "===== SNOPT SOURCE ==="
+              ls $SNOPT_SOURCE
               cd $SNOPT_SOURCE/..
+              echo "===== SNOPT SOURCE PARENT ==="
+              pwd
+              ls
               ./configure
               make
 
