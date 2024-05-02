@@ -312,7 +312,7 @@ jobs:
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
 
               cd ..
-              testflo pyoptsparse/tests --pre_anounce --show_skipped
+              testflo pyoptsparse/tests --pre_announce --show_skipped
 
               cd ..
             fi
