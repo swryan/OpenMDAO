@@ -291,39 +291,28 @@ jobs:
           echo "Install pyoptsparse"
           echo "============================================================="
 
-          if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
-            echo "  > Secure copying SNOPT 7.7 over SSH"
-            mkdir SNOPT
-            scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
-            SNOPT_SOURCE="SNOPT/src"
-          elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
-            echo "  > Secure copying SNOPT 7.2 over SSH"
-            mkdir SNOPT
-            scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
-            SNOPT_SOURCE="SNOPT/source"
-          elif [[ "${{ matrix.SNOPT }}" ]]; then
-            echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
-          fi
-
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
-            if [[ "${{ matrix.SNOPT }}" ]]; then
-              echo "** Building SNOPT..."
-              conda install compilers cmake meson
-              echo "===== SNOPT SOURCE ==="
-              ls $SNOPT_SOURCE
-              cd $SNOPT_SOURCE/..
-              echo "===== SNOPT SOURCE PARENT ==="
+            if [[ "${{ matrix.SNOPT }}" && "${{ matrix.SNOPT_LOCATION }}" ]]; then
+              echo "  > Secure copying SNOPT 7.7 over SSH"
+              mkdir SNOPT
+              scp -qr ${{ secrets.SNOPT_LOCATION }} SNOPT
+              cd SNOPT
               pwd
               ls
+
+              echo "  > Building SNOPT..."
+              conda install compilers cmake meson
               ./configure
               make
 
-              echo "** Building Python bindings for SNOPT..."
+              echo "  > Building Python bindings for SNOPT..."
               git clone git+https://github.com/mdolab/pyoptsparse
               cp pyoptsparse/pyoptsparse/pySNOPT/source/f2py/snopy.pyf lib/
               cd lib
               python -n numpy.f2py -c -m snopt snopt.pyf
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
+
+              cd ../..
             fi
 
             conda install -c conda-forge pyoptsparse
@@ -350,6 +339,19 @@ jobs:
               PAROPT="-a"
             fi
 
+            if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
+              echo "  > Secure copying SNOPT 7.7 over SSH"
+              mkdir SNOPT
+              scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
+              SNOPT="-s SNOPT/src"
+            elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
+              echo "  > Secure copying SNOPT 7.2 over SSH"
+              mkdir SNOPT
+              scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
+              SNOPT="-s SNOPT/source"
+            elif [[ "${{ matrix.SNOPT }}" ]]; then
+              echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
+            fi
 
             build_pyoptsparse $BRANCH $PAROPT $SNOPT
           fi
