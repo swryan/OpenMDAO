@@ -295,12 +295,10 @@ jobs:
             if [[ "${{ matrix.SNOPT }}" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
               echo "  > Secure copying SNOPT over SSH"
               scp -qr ${{ secrets.SNOPT_LOCATION }} .
-              cd SNOPT
-              pwd
-              ls
 
               echo "  > Building SNOPT..."
               conda install compilers cmake meson
+              cd SNOPT
               ./configure
               make
 
@@ -311,17 +309,16 @@ jobs:
               python -m numpy.f2py -c -m snopt snopt.pyf
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
 
-              cd ..
-
-              cd pyoptsparse/tests
-              pip install sqlitedict
-              testflo --pre_announce --show_skipped
               cd ../..
-
-              cd ..
             fi
 
-            conda install -c conda-forge mdolab-baseclasses pyoptsparse
+            conda install pyoptsparse
+
+            cd SNOPT/pyoptsparse/tests
+            pip install sqlitedict
+            testflo --pre_announce --show_skipped
+            cd ../../..
+
           else
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
