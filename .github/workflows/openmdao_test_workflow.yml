@@ -306,7 +306,7 @@ jobs:
 
               echo "  > Building Python bindings for SNOPT..."
               git clone https://github.com/mdolab/pyoptsparse
-              cp pyoptsparse/pyoptsparse/pySNOPT/source/f2py/snopy.pyf lib/
+              cp pyoptsparse/pyoptsparse/pySNOPT/source/f2py/snopt.pyf lib/
               cd lib
               python -n numpy.f2py -c -m snopt snopt.pyf
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
