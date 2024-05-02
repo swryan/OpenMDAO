@@ -308,16 +308,15 @@ jobs:
               cd lib
               python -m numpy.f2py -c -m snopt snopt.pyf
               export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
-              echo $PYOPTSPARSE_IMPORT_SNOPT_FROM
-              ls -l #PYOPTSPARSE_IMPORT_SNOPT_FROM
 
               cd ../..
             fi
 
+            echo $PYOPTSPARSE_IMPORT_SNOPT_FROM
+            ls -l $PYOPTSPARSE_IMPORT_SNOPT_FROM
             conda install pyoptsparse
 
             cd SNOPT/pyoptsparse/tests
-            pip install sqlitedict
             testflo -v --show_skipped
             cd ../../..
 
