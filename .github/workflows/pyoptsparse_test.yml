@@ -117,7 +117,7 @@ jobs:
 
           if [[ "${{ secrets.SNOPT_LOCATION }}" ]]; then
             echo "  > Secure copying SNOPT over SSH"
-            scp -vr ${{ secrets.SNOPT_LOCATION }} .
+            scp -vr -o StrictHostKeyChecking=no ${{ secrets.SNOPT_LOCATION }} .
 
             echo "  > Building SNOPT..."
             conda install compilers cmake meson
@@ -197,6 +197,12 @@ jobs:
       #        $ conda activate test
       - name: Setup tmate session
         if: ${{ inputs.debug_enabled }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
+
+      - name: Setup tmate session
+        if: fail() && ${{ inputs.debug_enabled }}
         uses: mxschmitt/action-tmate@v3
         with:
           limit-access-to-actor: true
