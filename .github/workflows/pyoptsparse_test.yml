@@ -7,25 +7,18 @@ on:
     inputs:
       run_name:
         type: string
-        description: 'Name of workflow run as it will appear under Actions tab:'
+        description: 'Name of workflow run as it will appear under Actions tab (optional):'
         required: false
         default: ""
-      Ubuntu:
-        type: boolean
-        description: 'Include Ubuntu in test matrix'
-        required: false
-        default: false
-      MacOS:
-        type: boolean
-        description: 'Include MacOS in test matrix'
-        required: false
-        default: false
-      MacOS_ARM:
-        type: boolean
-        description: 'Include MacOS ARM in test matrix'
-        required: false
-        default: false
-
+      job_name:
+        description: 'Select a job from the matrix to run (default: all jobs)'
+        type: choice
+        options:
+          - ''
+          - 'Ubuntu'
+          - 'Ubuntu PyPi'
+          - 'MacOS'
+          - 'MacOS ARM'
       debug_enabled:
         type: boolean
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
@@ -53,7 +46,13 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PYOPTSPARSE: 'conda-forge'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu }}
+
+          - NAME: Ubuntu PyPi
+            OS: ubuntu-latest
+            PY: '3.12'
+            NUMPY: '1.26'
+            SCIPY: '1.13'
+            PYOPTSPARSE: 'pypi'
 
           # test on MacOS
           - NAME: MacOS
@@ -62,7 +61,6 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PYOPTSPARSE: 'conda-forge'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS }}
 
           # test on MacOS/ARM
           - NAME: MacOS ARM
@@ -71,7 +69,6 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PYOPTSPARSE: 'conda-forge'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
 
     runs-on: ${{ matrix.OS }}
 
@@ -82,6 +79,11 @@ jobs:
         shell: bash -l {0}
 
     steps:
+      - name: Exit if this job was not selected
+        if: github.event_name == 'workflow_dispatch' &&  inputs.job_name != '' &&  inputs.job_name != matrix.NAME
+        uses: actions/github-script@v7
+        with:
+          script: core.setFailed('The ${{ matrix.NAME }} job was not included in the run, exiting...');
 
       - name: Create SSH key
         if: (matrix.SNOPT || matrix.BUILD_DOCS)
