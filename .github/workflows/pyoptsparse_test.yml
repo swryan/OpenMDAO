@@ -1,13 +1,7 @@
 name: Test pyoptsparse (with SNOPT)
 
 on:
-  # Trigger on push or pull request events for the master branch
-  push:
-    branches: [ master ]
-  pull_request:
-    branches: [ master ]
-
-  # Allow running the workflow manually from the Actions tab
+  # Run the workflow manually from the Actions tab
   # All jobs are excluded by default, desired jobs must be selected
   workflow_dispatch:
 
@@ -21,13 +15,13 @@ on:
 
       Ubuntu:
         type: boolean
-        description: 'Include Ubuntu Baseline in test matrix'
+        description: 'Include Ubuntu in test matrix'
         required: false
         default: false
 
       MacOS:
         type: boolean
-        description: 'Include MacOS Baseline in test matrix'
+        description: 'Include MacOS in test matrix'
         required: false
         default: false
 
@@ -64,7 +58,6 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PYOPTSPARSE: 'conda-forge'
-            # PAROPT: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu }}
 
           # test on MacOS
@@ -74,7 +67,6 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PYOPTSPARSE: 'conda-forge'
-            # PAROPT: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS }}
 
           # test on MacOS/ARM
@@ -84,7 +76,6 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PYOPTSPARSE: 'conda-forge'
-            # PAROPT: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
 
     runs-on: ${{ matrix.OS }}
@@ -122,13 +113,12 @@ jobs:
           pip install testflo
 
       - name: Install pyOptSparse
-        if: matrix.PYOPTSPARSE
         run: |
           echo "============================================================="
           echo "Install pyoptsparse"
           echo "============================================================="
 
-         if [[ "${{ secrets.SNOPT_LOCATION }}" ]]; then
+          if [[ "${{ secrets.SNOPT_LOCATION }}" ]]; then
             echo "  > Secure copying SNOPT over SSH"
             scp -qr ${{ secrets.SNOPT_LOCATION }} .
 
@@ -151,15 +141,22 @@ jobs:
           fi
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
+            echo "  > Installing pyoptsparse from conda-forge..."
             conda install pyoptsparse
           else
+            echo "  > Installing pyoptsparse from PyPi..."
             pip install pyoptsparse
           fi
+
+      - name: Install pyOptSparse
+        run: |
+          echo "============================================================="
+          echo "Run pyoptsparse tests"
+          echo "============================================================="
 
           git clone https://github.com/mdolab/pyoptsparse
           cd pyoptsparse/tests
           testflo -v --show_skipped
-
 
       - name: Display environment info
         id: env_info
