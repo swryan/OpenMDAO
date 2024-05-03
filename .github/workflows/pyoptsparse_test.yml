@@ -1,0 +1,208 @@
+name: Test pyoptsparse (with SNOPT)
+
+on:
+  # Trigger on push or pull request events for the master branch
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+  # Allow running the workflow manually from the Actions tab
+  # All jobs are excluded by default, desired jobs must be selected
+  workflow_dispatch:
+
+    inputs:
+
+      run_name:
+        type: string
+        description: 'Name of workflow run as it will appear under Actions tab:'
+        required: false
+        default: ""
+
+      Ubuntu:
+        type: boolean
+        description: 'Include Ubuntu Baseline in test matrix'
+        required: false
+        default: false
+
+      MacOS:
+        type: boolean
+        description: 'Include MacOS Baseline in test matrix'
+        required: false
+        default: false
+
+      MacOS_ARM:
+        type: boolean
+        description: 'Include MacOS ARM in test matrix'
+        required: false
+        default: false
+
+      debug_enabled:
+        type: boolean
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        required: false
+        default: false
+
+run-name:  ${{ inputs.run_name }}
+
+permissions: {}
+
+jobs:
+
+  tests:
+
+    timeout-minutes: 30
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # test on Ubuntu
+          - NAME: Ubuntu
+            OS: ubuntu-latest
+            PY: '3.12'
+            NUMPY: '1.26'
+            SCIPY: '1.13'
+            PYOPTSPARSE: 'conda-forge'
+            # PAROPT: true
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu }}
+
+          # test on MacOS
+          - NAME: MacOS
+            OS: macos-13
+            PY: '3.12'
+            NUMPY: '1.26'
+            SCIPY: '1.13'
+            PYOPTSPARSE: 'conda-forge'
+            # PAROPT: true
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS }}
+
+          # test on MacOS/ARM
+          - NAME: MacOS ARM
+            OS: macos-14
+            PY: '3.12'
+            NUMPY: '1.26'
+            SCIPY: '1.13'
+            PYOPTSPARSE: 'conda-forge'
+            # PAROPT: true
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
+
+    runs-on: ${{ matrix.OS }}
+
+    name: ${{ matrix.NAME }}
+
+    defaults:
+      run:
+        shell: bash -l {0}
+
+    steps:
+
+      - name: Create SSH key
+        if: (matrix.SNOPT || matrix.BUILD_DOCS)
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          mkdir -p ~/.ssh/
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          sudo chmod 600 ~/.ssh/id_rsa
+          echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+
+      - name: Setup conda
+        uses: conda-incubator/setup-miniconda@v3
+        with:
+          python-version: ${{ matrix.PY }}
+          conda-version: "*"
+          channels: conda-forge
+
+      - name: Install dependencies
+        run: |
+          conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
+          conda install cython swig compilers openmpi-mpicc cmake meson -q -y
+          pip install testflo
+
+      - name: Install pyOptSparse
+        if: matrix.PYOPTSPARSE
+        run: |
+          echo "============================================================="
+          echo "Install pyoptsparse"
+          echo "============================================================="
+
+         if [[ "${{ secrets.SNOPT_LOCATION }}" ]]; then
+            echo "  > Secure copying SNOPT over SSH"
+            scp -qr ${{ secrets.SNOPT_LOCATION }} .
+
+            echo "  > Building SNOPT..."
+            conda install compilers cmake meson
+            cd SNOPT
+            ./configure
+            make snopt
+
+            echo "  > Building Python bindings for SNOPT..."
+            cd lib
+            wget https://raw.githubusercontent.com/mdolab/pyoptsparse/main/pyoptsparse/pySNOPT/source/f2py/snopt.pyf
+            python -m numpy.f2py -c -m snopt snopt.pyf
+            export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
+
+            cd ../..
+
+            echo $PYOPTSPARSE_IMPORT_SNOPT_FROM
+            ls -l $PYOPTSPARSE_IMPORT_SNOPT_FROM
+          fi
+
+          if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
+            conda install pyoptsparse
+          else
+            pip install pyoptsparse
+          fi
+
+          git clone https://github.com/mdolab/pyoptsparse
+          cd pyoptsparse/tests
+          testflo -v --show_skipped
+
+
+      - name: Display environment info
+        id: env_info
+        continue-on-error: true
+        run: |
+          conda info
+          conda list
+
+          echo "============================================================="
+          echo "Check installed versions of Python, Numpy and Scipy"
+          echo "============================================================="
+          echo 'errors<<EOF' >> $GITHUB_OUTPUT
+
+          FINAL_VER=`python -c "import platform; print(platform.python_version())"`
+          if [[ ! "$FINAL_VER" == "${{ matrix.PY }}"* ]]; then
+            echo "Python version was changed from ${{ matrix.PY }} to $FINAL_VER" >> $GITHUB_OUTPUT
+          fi
+
+          FINAL_VER=`python -c "import numpy; print(numpy.__version__)"`
+          if [[ ! "$FINAL_VER" == "${{ matrix.NUMPY }}"* ]]; then
+            echo "NumPy version was changed from ${{ matrix.NUMPY }} to $FINAL_VER" >> $GITHUB_OUTPUT
+          fi
+
+          FINAL_VER=`python -c "import scipy; print(scipy.__version__)"`
+          if [[ ! "$FINAL_VER" == "${{ matrix.SCIPY }}"* ]]; then
+            echo "SciPy version was changed from ${{ matrix.SCIPY }} to $FINAL_VER" >> $GITHUB_OUTPUT
+          fi
+
+          echo 'EOF' >> $GITHUB_OUTPUT
+
+          grep changed $GITHUB_OUTPUT || echo ""
+
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      #
+      # To access the terminal through the web-interface:
+      #    1. Click on the web-browser link printed out in this action from the github
+      #       workflow terminal
+      #    2. Press cntrl + c in the new tab that opens up to reveal the terminal
+      #    3. To activate the conda environment run:
+      #        $ source $CONDA/etc/profile.d/conda.sh
+      #        $ conda activate test
+      - name: Setup tmate session
+        if: ${{ inputs.debug_enabled }}
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
