@@ -115,7 +115,7 @@ jobs:
 
           if [[ "${{ secrets.SNOPT_LOCATION }}" ]]; then
             echo "  > Secure copying SNOPT over SSH"
-            scp -qr ${{ secrets.SNOPT_LOCATION }} .
+            scp -vr ${{ secrets.SNOPT_LOCATION }} .
 
             echo "  > Building SNOPT..."
             conda install compilers cmake meson
