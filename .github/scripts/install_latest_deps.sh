@@ -16,7 +16,7 @@ python -m pip install --upgrade --pre setuptools
 echo "============================================================="
 echo "Install latest versions of NumPy/SciPy"
 echo "============================================================="
-python -m pip install --upgrade --pre numpy
+python -m pip install --upgrade --pre 'numpy<2'
 python -m pip install --upgrade --pre scipy
 
 # remember versions so we can check them later
