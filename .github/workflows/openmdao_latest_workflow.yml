@@ -46,18 +46,38 @@ jobs:
       matrix:
         include:
           # test latest versions on ubuntu
+          # Include PETSc, which requires NumPy<2
           - NAME: Ubuntu Latest
             OS: ubuntu-latest
             PY: 3
-            PETSc: 3
+            NUMPY: '<2'
+            PETSc: True
             SNOPT: 7.7
             BUILD_DOCS: true
 
           # test latest versions on macos
+          # Include PETSc, which requires NumPy<2
           - NAME: MacOS Latest
             OS: macos-13
             PY: 3
-            PETSc: 3
+            NUMPY: '<2'
+            PETSc: True
+            SNOPT: 7.7
+            BUILD_DOCS: false
+
+          # test latest versions on ubuntu
+          # Since PETSc can downgrade NumPy, exclude it
+          - NAME: Ubuntu Latest, No PETSc
+            OS: ubuntu-latest
+            PY: 3
+            SNOPT: 7.7
+            BUILD_DOCS: true
+
+          # test latest versions on macos
+          # Since PETSc can downgrade NumPy, exclude it
+          - NAME: MacOS Latest, No PETSc
+            OS: macos-13
+            PY: 3
             SNOPT: 7.7
             BUILD_DOCS: false
 
