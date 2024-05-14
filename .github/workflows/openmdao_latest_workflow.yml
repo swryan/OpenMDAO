@@ -23,6 +23,8 @@ on:
           - ''
           - 'Ubuntu Latest'
           - 'MacOS Latest'
+          - 'Ubuntu Latest, No PETSc'
+          - 'MacOS Latest, No PETSc'
         required: false
         default: ''
       debug_enabled:
