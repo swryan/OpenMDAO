@@ -16,7 +16,7 @@ python -m pip install --upgrade --pre setuptools
 echo "============================================================="
 echo "Install latest versions of NumPy/SciPy"
 echo "============================================================="
-python -m pip install --upgrade --pre 'numpy${{ matrix.NUMPY }}'
+python -m pip install --upgrade --pre 'numpy$NUMPY'
 python -m pip install --upgrade --pre scipy
 
 # remember versions so we can check them later
@@ -25,7 +25,7 @@ SCIPY_VER=`python -c "import scipy; print(scipy.__version__)"`
 echo "NUMPY_VER=$NUMPY_VER" >> $GITHUB_ENV
 echo "SCIPY_VER=$SCIPY_VER" >> $GITHUB_ENV
 
-if [[ "${{ matrix.PETSC }}" ]]; then
+if [[ "$PETSC" ]]; then
     echo "============================================================="
     echo "Install latest PETSc"
     echo "============================================================="

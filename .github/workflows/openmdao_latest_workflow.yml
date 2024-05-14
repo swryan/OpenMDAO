@@ -132,6 +132,9 @@ jobs:
 
       - name: Install MacOS-specific dependencies
         if: matrix.OS == 'macos-13'
+        env:
+          NUMPY: ${{ matrix.NUMPY }}
+          PETSC: ${{ matrix.PETSC }}
         run: |
           conda install compilers swig
 
