@@ -9,50 +9,6 @@ echo "============================================================="
 python -m pip install --upgrade pip
 
 echo "============================================================="
-echo "Install latest setuptools"
-echo "============================================================="
-python -m pip install --upgrade --pre setuptools
-
-echo "============================================================="
-echo "Install latest versions of NumPy/SciPy"
-echo "============================================================="
-python -m pip install --upgrade --pre 'numpy$NUMPY'
-python -m pip install --upgrade --pre scipy
-
-# remember versions so we can check them later
-NUMPY_VER=`python -c "import numpy; print(numpy.__version__)"`
-SCIPY_VER=`python -c "import scipy; print(scipy.__version__)"`
-echo "NUMPY_VER=$NUMPY_VER" >> $GITHUB_ENV
-echo "SCIPY_VER=$SCIPY_VER" >> $GITHUB_ENV
-
-if [[ "$PETSC" ]]; then
-    echo "============================================================="
-    echo "Install latest PETSc"
-    echo "============================================================="
-    conda install mpi4py petsc!=3.21.1 petsc4py -q -y
-
-    echo "============================================================="
-    echo "Check MPI and PETSc installation"
-    echo "============================================================="
-    export OMPI_MCA_rmaps_base_oversubscribe=1
-    export OMPI_MCA_btl=^openib
-
-    echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
-    echo "OMPI_MCA_btl=^openib" >> $GITHUB_ENV
-
-    echo "-----------------------"
-    echo "Quick test of mpi4py:"
-    mpirun -n 3 python -c "from mpi4py import MPI; print(f'Rank: {MPI.COMM_WORLD.rank}')"
-    echo "-----------------------"
-    echo "Quick test of petsc4py:"
-    mpirun -n 3 python -c "import numpy; from mpi4py import MPI; comm = MPI.COMM_WORLD; \
-                        import petsc4py; petsc4py.init(); \
-                        x = petsc4py.PETSc.Vec().createWithArray(numpy.ones(5)*comm.rank, comm=comm);  \
-                        print(x.getArray())"
-    echo "-----------------------"
-fi
-
-echo "============================================================="
 echo "Install latest versions of 'required' dependencies"
 echo "============================================================="
 python -m pip install --upgrade --pre networkx
