@@ -132,13 +132,13 @@ jobs:
 
       - name: Install MacOS-specific dependencies
         if: matrix.OS == 'macos-13'
-        env:
-          NUMPY: ${{ matrix.NUMPY }}
-          PETSC: ${{ matrix.PETSC }}
         run: |
           conda install compilers swig
 
       - name: Install latest versions of [all] openmdao dependencies
+        env:
+          NUMPY: ${{ matrix.NUMPY }}
+          PETSC: ${{ matrix.PETSC }}
         run: |
           source .github/scripts/install_latest_deps.sh
 
