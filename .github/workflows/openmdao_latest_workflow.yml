@@ -21,10 +21,10 @@ on:
         type: choice
         options:
           - ''
-          - 'Ubuntu Latest'
-          - 'MacOS Latest'
-          - 'Ubuntu Latest, No PETSc'
-          - 'MacOS Latest, No PETSc'
+          - 'Ubuntu Latest, NumPy<2'
+          - 'MacOS Latest, NumPy<2'
+          - 'Ubuntu Latest, NumPy 2, No PETSc'
+          - 'MacOS Latest, NumPy 2, No PETSc'
         required: false
         default: ''
       debug_enabled:
@@ -49,7 +49,7 @@ jobs:
         include:
           # test latest versions on ubuntu
           # Include PETSc, which requires NumPy<2
-          - NAME: Ubuntu Latest
+          - NAME: Ubuntu Latest, NumPy<2
             OS: ubuntu-latest
             PY: 3
             NUMPY: '<2'
@@ -59,7 +59,7 @@ jobs:
 
           # test latest versions on macos
           # Include PETSc, which requires NumPy<2
-          - NAME: MacOS Latest
+          - NAME: MacOS Latest, NumPy<2
             OS: macos-13
             PY: 3
             NUMPY: '<2'
@@ -68,19 +68,17 @@ jobs:
             BUILD_DOCS: false
 
           # test latest versions on ubuntu
-          # Since PETSc can downgrade NumPy, exclude it
-          - NAME: Ubuntu Latest, No PETSc
+          # Exclude PETSc since it will downgrade NumPy
+          - NAME: Ubuntu Latest, NumPy 2, No PETSc
             OS: ubuntu-latest
             PY: 3
-            SNOPT: 7.7
             BUILD_DOCS: true
 
           # test latest versions on macos
-          # Since PETSc can downgrade NumPy, exclude it
-          - NAME: MacOS Latest, No PETSc
+          # Exclude PETSc since it will downgrade NumPy
+          - NAME: MacOS Latest, NumPy 2, No PETSc
             OS: macos-13
             PY: 3
-            SNOPT: 7.7
             BUILD_DOCS: false
 
     runs-on: ${{ matrix.OS }}
