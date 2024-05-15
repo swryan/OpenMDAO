@@ -216,7 +216,7 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          if [[ "${{ matrix.NUMPY }}" == ""]]; then
+          if [[ "${{ matrix.NUMPY }}" == "" ]]; then
             sed -i 's/numpy<2/numpy/g' pyproject.toml
             grep numpy pyproject.toml
           fi
