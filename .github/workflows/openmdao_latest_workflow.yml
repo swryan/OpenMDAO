@@ -223,7 +223,7 @@ jobs:
           fi
           python -m pip install .
 
-      - name: Install OpenMDAO
+      - name: Check NumPy 2.0 Compatibility
         run: |
           echo "============================================================="
           echo "Check OpenMDAO code for NumPy 2.0 compatibility"
