@@ -199,7 +199,7 @@ jobs:
           echo "============================================================="
           echo "Install latest pyoptsparse"
           echo "============================================================="
-          conda install cython swig compilers
+          pip install 'pybind11>=2.12'.
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
           if [[ "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
