@@ -32,7 +32,7 @@ class NanComp(om.ExplicitComponent):
     def compute_partials(self, inputs, partials):
         """Intentionally incorrect derivative."""
         J = partials
-        J['y', 'x'] = np.NaN
+        J['y', 'x'] = np.nan
 
 
 class SingularComp(om.ImplicitComponent):
@@ -64,7 +64,7 @@ class NanComp2(om.ExplicitComponent):
     def compute_partials(self, inputs, partials):
         """Intentionally incorrect derivative."""
         J = partials
-        J['y', 'x'] = np.NaN
+        J['y', 'x'] = np.nan
         J['y2', 'x'] = 2.0
 
 class DupPartialsComp(om.ExplicitComponent):

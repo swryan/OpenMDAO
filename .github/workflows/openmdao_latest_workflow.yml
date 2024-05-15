@@ -223,6 +223,15 @@ jobs:
           fi
           python -m pip install .
 
+      - name: Install OpenMDAO
+        run: |
+          echo "============================================================="
+          echo "Check OpenMDAO code for NumPy 2.0 compatibility"
+          echo "See: https://numpy.org/devdocs/numpy_2_0_migration_guide.html"
+          echo "============================================================="
+          python -m pip install ruff
+          ruff check . --select NPY201
+
       - name: Display environment info
         id: env_info
         if: always()
