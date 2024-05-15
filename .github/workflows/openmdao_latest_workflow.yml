@@ -23,8 +23,8 @@ on:
           - ''
           - 'Ubuntu Latest, NumPy<2'
           - 'MacOS Latest, NumPy<2'
-          - 'Ubuntu Latest, NumPy 2, No PETSc'
-          - 'MacOS Latest, NumPy 2, No PETSc'
+          - 'Ubuntu Latest, NumPy 2 (No PETSc/pyOS)'
+          - 'MacOS Latest, NumPy 2 (No PETSc/pyOS)'
         required: false
         default: ''
       debug_enabled:
@@ -48,35 +48,35 @@ jobs:
       matrix:
         include:
           # test latest versions on ubuntu
-          # Include PETSc, which requires NumPy<2
+          # Include PETSc/pyOS, which require NumPy<2
           - NAME: Ubuntu Latest, NumPy<2
             OS: ubuntu-latest
             PY: 3
             NUMPY: '<2'
             PETSc: True
-            SNOPT: 7.7
+            PYOPTSPARSE: true
             BUILD_DOCS: true
 
           # test latest versions on macos
-          # Include PETSc, which requires NumPy<2
+          # Include PETSc/pyOS, which require NumPy<2
           - NAME: MacOS Latest, NumPy<2
             OS: macos-13
             PY: 3
             NUMPY: '<2'
             PETSc: True
-            SNOPT: 7.7
+            PYOPTSPARSE: true
             BUILD_DOCS: false
 
           # test latest versions on ubuntu
-          # Exclude PETSc since it will downgrade NumPy
-          - NAME: Ubuntu Latest, NumPy 2, No PETSc
+          # Exclude PETSc/pyOS, which require NumPy<2
+          - NAME: Ubuntu Latest, NumPy 2 (No PETSc/pyOS)
             OS: ubuntu-latest
             PY: 3
             BUILD_DOCS: true
 
           # test latest versions on macos
-          # Exclude PETSc since it will downgrade NumPy
-          - NAME: MacOS Latest, NumPy 2, No PETSc
+          # Exclude PETSc/pyOS, which require NumPy<2
+          - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOS)
             OS: macos-13
             PY: 3
             BUILD_DOCS: false
@@ -179,6 +179,7 @@ jobs:
           source .github/scripts/install_latest_deps.sh
 
       - name: Install pyOptSparse
+        if: ${{ matrix.PYOPTSPARSE }}
         run: |
           echo "============================================================="
           echo "Define useful functions"
