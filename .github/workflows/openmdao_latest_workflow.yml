@@ -216,6 +216,9 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
+          if [[ "${{ matrix.NUMPY }}" != "<2"]]; then
+            sed -i 's/numpy<2/numpy/g' pyproject.toml
+          fi
           python -m pip install .
 
       - name: Display environment info

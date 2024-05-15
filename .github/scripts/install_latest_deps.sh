@@ -1,8 +1,6 @@
 # this script will populate a conda environment with the latest versions
 # (including pre-release versions) of all OpenMDAO dependencies
 
-conda upgrade -c conda-forge --all -y
-
 echo "============================================================="
 echo "Upgrade to latest pip"
 echo "============================================================="
