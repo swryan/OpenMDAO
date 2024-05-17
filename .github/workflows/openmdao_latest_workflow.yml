@@ -70,7 +70,6 @@ jobs:
             PY: 3
             NUMPY: '<2'
             PETSc: True
-            PYOPTSPARSE: true
 
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
