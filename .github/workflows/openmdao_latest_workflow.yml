@@ -201,7 +201,6 @@ jobs:
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
           if [[ "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
-              conda install -c conda-forge 'openssl=3.0'
               echo "  > Secure copying SNOPT 7.7 over SSH"
               mkdir SNOPT
               scp -r ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
