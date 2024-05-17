@@ -128,10 +128,10 @@ jobs:
           conda-version: "*"
           channels: conda-forge
 
-      - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-13'
-        run: |
-          conda install compilers swig
+      # - name: Install MacOS-specific dependencies
+      #   if: matrix.OS == 'macos-13'
+      #   run: |
+      #     conda install compilers swig
 
       - name: Install NumPy/SciPy and PETSc
         run: |
@@ -201,9 +201,10 @@ jobs:
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
           if [[ "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
+              conda install -c conda-forge 'openssl=3.0'
               echo "  > Secure copying SNOPT 7.7 over SSH"
               mkdir SNOPT
-              scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
+              scp -r ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
               SNOPT="-s SNOPT/src"
           else
               echo "SNOPT source is not available"
