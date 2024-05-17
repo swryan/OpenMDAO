@@ -352,7 +352,7 @@ class TestEQConstraintComp(unittest.TestCase):
         prob.run_driver()
 
         with warnings.catch_warnings():
-            warnings.filterwarnings(action="error", category=np.ComplexWarning)
+            warnings.filterwarnings(action="error", category=np.exceptions.ComplexWarning)
             cpd = force_check_partials(prob, out_stream=None, method='cs')
 
         assert_check_partials(cpd, atol=1e-10, rtol=1e-10)

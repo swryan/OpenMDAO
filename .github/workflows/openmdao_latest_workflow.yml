@@ -65,21 +65,18 @@ jobs:
             NUMPY: '<2'
             PETSc: True
             PYOPTSPARSE: true
-            BUILD_DOCS: false
 
           # test latest versions on ubuntu
           # Exclude PETSc/pyOS, which require NumPy<2
           - NAME: Ubuntu Latest, NumPy 2 (No PETSc/pyOS)
             OS: ubuntu-latest
             PY: 3
-            BUILD_DOCS: true
 
           # test latest versions on macos
           # Exclude PETSc/pyOS, which require NumPy<2
           - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOS)
             OS: macos-13
             PY: 3
-            BUILD_DOCS: false
 
     runs-on: ${{ matrix.OS }}
 
