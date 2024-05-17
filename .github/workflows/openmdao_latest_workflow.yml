@@ -55,6 +55,7 @@ jobs:
             NUMPY: '<2'
             PETSc: True
             PYOPTSPARSE: true
+            SNOPT: true
             BUILD_DOCS: true
 
           # test latest versions on ubuntu
@@ -70,6 +71,7 @@ jobs:
             PY: 3
             NUMPY: '<2'
             PETSc: True
+            PYOPTSPARSE: true
 
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
@@ -199,13 +201,15 @@ jobs:
           echo "============================================================="
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
-          if [[ "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
+          if [[ "${{ matrix.SNOPT }}" ]]; then
+            if [[]] "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
               echo "  > Secure copying SNOPT 7.7 over SSH"
               mkdir SNOPT
               scp -r ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
               SNOPT="-s SNOPT/src"
-          else
+            else
               echo "SNOPT source is not available"
+            fi
           fi
           build_pyoptsparse $BRANCH $SNOPT
 
