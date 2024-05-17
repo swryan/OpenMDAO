@@ -126,10 +126,10 @@ jobs:
           conda-version: "*"
           channels: conda-forge
 
-      # - name: Install MacOS-specific dependencies
-      #   if: matrix.OS == 'macos-13'
-      #   run: |
-      #     conda install compilers swig
+      - name: Install MacOS-specific dependencies
+        if: matrix.OS == 'macos-13'
+        run: |
+          conda install compilers swig
 
       - name: Install NumPy/SciPy and PETSc
         run: |
