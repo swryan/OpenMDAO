@@ -15,7 +15,7 @@ try:
     # The exceptions module is new in NumPy 1.25.  Older exceptions remain available
     # through the main NumPy namespace for compatibility. (Until NumPy 2.0 release)
     from numpy.exceptions import ComplexWarning
-except AttributeError:
+except ModuleNotFoundError:
     from numpy import ComplexWarning
 
 @use_tempdirs
