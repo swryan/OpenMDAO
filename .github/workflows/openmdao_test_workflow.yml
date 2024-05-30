@@ -230,6 +230,15 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
+      - name: Check NumPy 2.0 Compatibility
+        run: |
+          echo "============================================================="
+          echo "Check OpenMDAO code for NumPy 2.0 compatibility"
+          echo "See: https://numpy.org/devdocs/numpy_2_0_migration_guide.html"
+          echo "============================================================="
+          python -m pip install ruff
+          ruff check . --select NPY201
+
       - name: Install MacOS-specific dependencies
         if: matrix.OS == 'macos-13'
         run: |
