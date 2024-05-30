@@ -172,7 +172,7 @@ jobs:
       run:
         shell: bash -l {0}
 
-    if: ${{ matrix.EXCLUDE }} != true
+    if: matrix.EXCLUDE != true
 
     steps:
       - name: Display run details
