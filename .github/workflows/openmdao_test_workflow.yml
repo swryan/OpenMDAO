@@ -172,6 +172,8 @@ jobs:
       run:
         shell: bash -l {0}
 
+    if: ${{ matrix.EXCLUDE }} != true
+
     steps:
       - name: Display run details
         run: |
@@ -182,12 +184,6 @@ jobs:
           echo "Triggered by: ${GITHUB_EVENT_NAME}"
           echo "Initiated by: ${GITHUB_ACTOR}"
           echo "============================================================="
-
-      - name: Exit if this job was excluded
-        if: matrix.EXCLUDE
-        uses: actions/github-script@v7
-        with:
-          script: core.setFailed('The ${{ matrix.NAME }} job was excluded from the run, exiting...');
 
       - name: Create SSH key
         if: (matrix.SNOPT || matrix.BUILD_DOCS)
