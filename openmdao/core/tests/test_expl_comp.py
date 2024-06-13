@@ -13,7 +13,7 @@ from openmdao.test_suite.components.expl_comp_simple import TestExplCompSimple, 
     TestExplCompSimpleDense
 from openmdao.test_suite.components.sellar import SellarDis1withDerivatives, \
      SellarDis2withDerivatives
-from openmdao.utils.assert_utils import assert_warning, assert_near_equal
+from openmdao.utils.assert_utils import assert_near_equal
 from openmdao.utils.general_utils import printoptions, remove_whitespace
 from openmdao.utils.mpi import MPI
 

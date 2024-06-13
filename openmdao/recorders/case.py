@@ -3,13 +3,14 @@ A Case class.
 """
 
 import sys
-import itertools
+from itertools import product, chain
 
 from collections import OrderedDict
 
 import numpy as np
 
 from openmdao.core.constants import _DEFAULT_OUT_STREAM
+from openmdao.core.system import allowed_meta_names
 from openmdao.recorders.sqlite_recorder import blob_to_array
 from openmdao.utils.record_util import deserialize, get_source_system
 from openmdao.utils.variable_table import write_var_table
@@ -391,6 +392,370 @@ class Case(object):
             Map of variables to their values.
         """
         return self._get_variables_of_type('response', scaled, use_indices)
+
+    def get_io_metadata(self, iotypes=('input', 'output'), metadata_keys=None,
+                        includes=None, excludes=None, is_indep_var=None, is_design_var=None,
+                        tags=(), get_remote=False, rank=None,
+                        return_rel_names=True):
+        """
+        Retrieve metadata for a filtered list of variables.
+
+        Parameters
+        ----------
+        iotypes : str or iter of str
+            Will contain either 'input', 'output', or both.  Defaults to both.
+        metadata_keys : iter of str or None
+            Names of metadata entries to be retrieved or None, meaning retrieve all
+            available 'allprocs' metadata.  If 'val' or 'src_indices' are required,
+            their keys must be provided explicitly since they are not found in the 'allprocs'
+            metadata and must be retrieved from local metadata located in each process.
+        includes : str, iter of str or None
+            Collection of glob patterns for pathnames of variables to include. Default is None,
+            which includes all variables.
+        excludes : str, iter of str or None
+            Collection of glob patterns for pathnames of variables to exclude. Default is None.
+        is_indep_var : bool or None
+            If None (the default), do no additional filtering of the inputs.
+            If True, list only inputs connected to an output tagged `openmdao:indep_var`.
+            If False, list only inputs _not_ connected to outputs tagged `openmdao:indep_var`.
+        is_design_var : bool or None
+            If None (the default), do no additional filtering of the inputs.
+            If True, list only inputs connected to outputs that are driver design variables.
+            If False, list only inputs _not_ connected to outputs that are driver design variables.
+        tags : str or iter of strs
+            User defined tags that can be used to filter what gets listed. Only inputs with the
+            given tags will be listed.
+            Default is None, which means there will be no filtering based on tags.
+        get_remote : bool
+            If True, retrieve variables from other MPI processes as well.
+        rank : int or None
+            If None, and get_remote is True, retrieve values from all MPI process to all other
+            MPI processes.  Otherwise, if get_remote is True, retrieve values from all MPI
+            processes only to the specified rank.
+        return_rel_names : bool
+            If True, the names returned will be relative to the scope of this System. Otherwise
+            they will be absolute names.
+
+        Returns
+        -------
+        dict
+            A dict of metadata keyed on name, where name is either absolute or relative
+            based on the value of the `return_rel_names` arg, and metadata is a dict containing
+            entries based on the value of the metadata_keys arg.  Every metadata dict will
+            always contain two entries, 'promoted_name' and 'discrete', to indicate a given
+            variable's promoted name and whether or not it is discrete.
+        """
+        if isinstance(iotypes, str):
+            iotypes = (iotypes,)
+        if isinstance(includes, str):
+            includes = (includes,)
+        if isinstance(excludes, str):
+            excludes = (excludes,)
+
+        if metadata_keys is not None:
+            keyset = set(metadata_keys)
+            diff = keyset - allowed_meta_names
+            if diff:
+                raise RuntimeError(f"{self.msginfo}: {sorted(diff)} are not valid metadata entry "
+                                   "names.")
+
+        abs2meta = self._abs2meta
+
+        if tags:
+            tagset = make_set(tags)
+
+        result = {}
+
+        abs2prom = self._abs2prom
+
+        if is_design_var is not None:
+            des_vars = self.get_design_vars(get_sizes=False, use_prom_ivc=False)
+
+        for iotype in iotypes:
+            for abs_name, prom in abs2prom[iotype].items():
+                if not match_prom_or_abs(abs_name, prom, includes, excludes):
+                    continue
+
+                rel_name = abs_name
+                meta = abs2meta[abs_name] if abs_name in abs2meta else None
+
+                if meta is None:
+                    ret_meta = None
+                else:
+                    if metadata_keys is None:
+                        ret_meta = dict(meta)
+                    else:
+                        ret_meta = {}
+                        for key in keyset:
+                            try:
+                                ret_meta[key] = meta[key]
+                            except KeyError:
+                                ret_meta[key] = 'Unavailable'
+
+                if ret_meta is not None:
+                    # handle is_indep_var
+                    if is_indep_var is not None:
+                        if iotype == 'output':
+                            out_meta = meta
+                        else:
+                            src_name = self.get_source(abs_name)
+                            out_meta = abs2meta['output'][src_name]
+
+                        src_tags = out_meta['tags'] if 'tags' in out_meta else {}
+                        if is_indep_var:
+                            if 'openmdao:indep_var' not in src_tags:
+                                continue
+                        elif 'openmdao:indep_var' in src_tags:
+                            continue
+
+                    # handle is_design_var
+                    if is_design_var is not None:
+                        if iotype == 'output':
+                            out_name = abs_name
+                        else:
+                            out_name = self.get_source(abs_name)
+                        if is_design_var:
+                            if out_name not in des_vars:
+                                continue
+                        elif out_name in des_vars:
+                            continue
+
+                    # handle tags
+                    if tags and not tagset & ret_meta['tags']:
+                        continue
+
+                    ret_meta['prom_name'] = prom
+
+                    ret_meta['discrete'] = 'discrete' in abs2meta[abs_name]
+
+                    if return_rel_names:
+                        result[rel_name] = ret_meta
+                    else:
+                        result[abs_name] = ret_meta
+
+        return result
+
+    def list_vars(self,
+                  explicit=True, implicit=True,
+                  val=True,
+                  prom_name=True,
+                  residuals=False,
+                  residuals_tol=None,
+                  units=False,
+                  shape=False,
+                  global_shape=False,
+                  bounds=False,
+                  scaling=False,
+                  desc=False,
+                  print_arrays=False,
+                  tags=None,
+                  includes=None,
+                  excludes=None,
+                  is_indep_var=None,
+                  is_design_var=None,
+                  all_procs=False,
+                  list_autoivcs=False,
+                  out_stream=_DEFAULT_OUT_STREAM,
+                  print_min=False,
+                  print_max=False,
+                  return_format='list'):
+        """
+        Write a list of inputs and outputs sorted by component in execution order.
+
+        Parameters
+        ----------
+        explicit : bool, optional
+            Include outputs from explicit components. Default is True.
+        implicit : bool, optional
+            Include outputs from implicit components. Default is True.
+        val : bool, optional
+            When True, display output values. Default is True.
+        prom_name : bool, optional
+            When True, display the promoted name of the variable.
+            Default is True.
+        residuals : bool, optional
+            When True, display residual values. Default is False.
+        residuals_tol : float, optional
+            If set, limits the output of list_outputs to only variables where
+            the norm of the resids array is greater than the given 'residuals_tol'.
+            Default is None.
+        units : bool, optional
+            When True, display units. Default is False.
+        shape : bool, optional
+            When True, display/return the shape of the value. Default is False.
+        global_shape : bool, optional
+            When True, display/return the global shape of the value. Default is False.
+        bounds : bool, optional
+            When True, display/return bounds (lower and upper). Default is False.
+        scaling : bool, optional
+            When True, display/return scaling (ref, ref0, and res_ref). Default is False.
+        desc : bool, optional
+            When True, display/return description. Default is False.
+        print_arrays : bool, optional
+            When False, in the columnar display, just display norm of any ndarrays with size > 1.
+            The norm is surrounded by vertical bars to indicate that it is a norm.
+            When True, also display full values of the ndarray below the row. Format  is affected
+            by the values set with numpy.set_printoptions
+            Default is False.
+        tags : str or list of strs
+            User defined tags that can be used to filter what gets listed. Only outputs with the
+            given tags will be listed.
+            Default is None, which means there will be no filtering based on tags.
+        includes : None, str, or iter of str
+            Collection of glob patterns for pathnames of variables to include. Default is None,
+            which includes all output variables.
+        excludes : None, str, or iter of str
+            Collection of glob patterns for pathnames of variables to exclude. Default is None.
+        is_indep_var : bool or None
+            If None (the default), do no additional filtering of the inputs.
+            If True, list only outputs tagged `openmdao:indep_var`.
+            If False, list only outputs that are _not_ tagged `openmdao:indep_var`.
+        is_design_var : bool or None
+            If None (the default), do no additional filtering of the inputs.
+            If True, list only inputs connected to outputs that are driver design variables.
+            If False, list only inputs _not_ connected to outputs that are driver design variables.
+        all_procs : bool, optional
+            When True, display output on all processors. Default is False.
+        list_autoivcs : bool
+            If True, include auto_ivc outputs in the listing.  Defaults to False.
+        out_stream : file-like
+            Where to send human readable output. Default is sys.stdout.
+            Set to None to suppress.
+        print_min : bool
+            When true, if the output value is an array, print its smallest value.
+        print_max : bool
+            When true, if the output value is an array, print its largest value.
+        return_format : str
+            Indicates the desired format of the return value. Can have value of 'list' or 'dict'.
+            If 'list', the return value is a list of (name, metadata) tuples.
+            if 'dict', the return value is a dictionary mapping {name: metadata}.
+
+        Returns
+        -------
+        list of (name, metadata) or dict of {name: metadata}
+            List or dict of output names and other optional information about those outputs.
+        """
+        if return_format not in ('list', 'dict'):
+            badarg = f"'{return_format}'" if isinstance(return_format, str) else f"{return_format}"
+            raise ValueError(f"Invalid value ({badarg}) for return_format, "
+                             "must be a string value of 'list' or 'dict'")
+
+        keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
+        keyflags = [val, units, shape, global_shape, desc, tags]
+
+        keys = [name for i, name in enumerate(keynames) if keyflags[i]]
+
+        if bounds:
+            keys.extend(('lower', 'upper'))
+        if scaling:
+            keys.extend(('ref', 'ref0', 'res_ref'))
+
+        outputs = self.get_io_metadata(('output',), keys, includes, excludes,
+                                       is_indep_var, is_design_var, tags,
+                                       get_remote=True,
+                                       rank=None if all_procs or val or residuals else 0,
+                                       return_rel_names=False)
+
+        metavalues = val and self.inputs is None
+
+        keyvals = [metavalues, units, shape, global_shape, desc, tags is not None]
+        keys = [n for i, n in enumerate(keynames) if keyvals[i]]
+
+        inputs = self.get_io_metadata(('input',), keys, includes, excludes,
+                                      is_indep_var, is_design_var, tags,
+                                      get_remote=True,
+                                      rank=None if all_procs or val else 0,
+                                      return_rel_names=False)
+
+        # filter auto_ivcs if requested
+        if outputs and not list_autoivcs:
+            outputs = {n: m for n, m in outputs.items() if not n.startswith('_auto_ivc.')}
+
+        # get values & resids
+        if self.outputs is not None and (val or residuals or residuals_tol):
+            to_remove = []
+            print_options = np.get_printoptions()
+            np_precision = print_options['precision']
+
+            for name, meta in outputs.items():
+                if val:
+                    # we want value from the input vector, not from the metadata
+                    meta['val'] = self.outputs[name]
+
+                    if isinstance(meta['val'], np.ndarray):
+                        if print_min:
+                            meta['min'] = np.round(np.min(meta['val']), np_precision)
+
+                        if print_max:
+                            meta['max'] = np.round(np.max(meta['val']), np_precision)
+
+                if residuals or residuals_tol:
+                    resids = self.resids[name]
+                    if residuals_tol and np.linalg.norm(resids) < residuals_tol:
+                        to_remove.append(name)
+                    elif residuals:
+                        meta['resids'] = resids
+
+            # remove any outputs that don't pass the residuals_tol filter
+            for name in to_remove:
+                del outputs[name]
+
+        if val and self.inputs is not None:
+            # we want value from the input vector, not from the metadata
+            print_options = np.get_printoptions()
+            np_precision = print_options['precision']
+
+            for n, meta in inputs.items():
+                meta['val'] = self.inputs[n]
+                if isinstance(meta['val'], np.ndarray):
+                    if print_min:
+                        meta['min'] = np.round(np.min(meta['val']), np_precision)
+
+                    if print_max:
+                        meta['max'] = np.round(np.max(meta['val']), np_precision)
+
+        # remove metadata we don't want to show/return
+        to_remove = ['discrete']
+        if tags:
+            to_remove.append('tags')
+        if not prom_name:
+            to_remove.append('prom_name')
+        for _, meta in outputs.items():
+            for key in to_remove:
+                del meta[key]
+        for _, meta in inputs.items():
+            for key in to_remove:
+                del meta[key]
+
+        variables = set(outputs.keys()).union(set(inputs.keys()))
+        var_list = []
+        var_dict = {}
+
+        if self.inputs:
+            for var_name in self.inputs.absolute_names():
+                if var_name in variables:
+                    var_list.append(var_name)
+                    if var_name in outputs:
+                        var_dict[var_name] = outputs[var_name]
+                        var_dict[var_name]['io'] = 'output'
+                    else:
+                        var_dict[var_name] = inputs[var_name]
+                        var_dict[var_name]['io'] = 'input'
+
+        if self.outputs:
+            for var_name in self.outputs.absolute_names():
+                if var_name in variables:
+                    var_list.append(var_name)
+                    if var_name in outputs:
+                        var_dict[var_name] = outputs[var_name]
+                        var_dict[var_name]['io'] = 'output'
+                    else:
+                        var_dict[var_name] = inputs[var_name]
+                        var_dict[var_name]['io'] = 'input'
+
+        self._write_table('all', var_dict, True, print_arrays, out_stream)
+
+        return var_dict
 
     def list_inputs(self,
                     val=True,
@@ -812,9 +1177,12 @@ class Case(object):
             return
 
         # Make a dict of variables. Makes it easier to work with in this method
-        var_dict = OrderedDict()
-        for name, vals in var_data:
-            var_dict[name] = vals
+        if isinstance(var_data, dict):
+            var_dict = var_data
+        else:
+            var_dict = OrderedDict()
+            for name, vals in var_data:
+                var_dict[name] = vals
 
         # determine pathname of the system
         if self.source in ('root', 'driver', 'problem', 'root.nonlinear_solver'):
@@ -1065,7 +1433,7 @@ class PromAbsDict(dict):
         else:
             abs_wrt = [wrt]
 
-        abs_keys = [f'{o}{DERIV_KEY_SEP}{w}' for o, w in itertools.product(abs_of, abs_wrt)]
+        abs_keys = [f'{o}{DERIV_KEY_SEP}{w}' for o, w in product(abs_of, abs_wrt)]
 
         if wrt in abs2prom:
             prom_wrt = abs2prom[wrt]
