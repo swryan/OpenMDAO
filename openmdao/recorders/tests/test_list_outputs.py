@@ -58,7 +58,7 @@ class RectangleGroup(om.Group):
 
 
 @use_tempdirs
-class ListVarssTest(unittest.TestCase):
+class ListVarsTest(unittest.TestCase):
 
     def test_invalid_return_format(self):
         prob = ParaboloidProblem()

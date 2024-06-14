@@ -3,7 +3,7 @@ A Case class.
 """
 
 import sys
-from itertools import product, chain
+import itertools
 
 from collections import OrderedDict
 
@@ -1433,7 +1433,7 @@ class PromAbsDict(dict):
         else:
             abs_wrt = [wrt]
 
-        abs_keys = [f'{o}{DERIV_KEY_SEP}{w}' for o, w in product(abs_of, abs_wrt)]
+        abs_keys = [f'{o}{DERIV_KEY_SEP}{w}' for o, w in itertools.product(abs_of, abs_wrt)]
 
         if wrt in abs2prom:
             prom_wrt = abs2prom[wrt]
