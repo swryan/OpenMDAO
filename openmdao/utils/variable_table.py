@@ -91,7 +91,8 @@ def write_var_table(pathname, var_list, var_type, var_dict,
     # Need an ordered list of possible output values for the two cases: inputs and outputs
     #  so that we do the column output in the correct order
     if var_type == 'input':
-        out_types = ('val', 'units', 'shape', 'global_shape', 'prom_name', 'desc', 'min', 'max', 'tags')
+        out_types = ('val', 'units', 'shape', 'global_shape', 'prom_name', 'desc', 'min', 'max',
+                     'tags')
     elif var_type == 'all':
         out_types = ('val', 'io', 'resids', 'units', 'shape', 'global_shape', 'lower', 'upper',
                      'ref', 'ref0', 'res_ref', 'prom_name', 'desc', 'min', 'max', 'tags')
