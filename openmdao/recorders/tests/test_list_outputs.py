@@ -1,60 +1,14 @@
 import unittest
+import io
 
 import numpy as np
+
 import openmdao.api as om
 from openmdao.test_suite.components.paraboloid_problem import ParaboloidProblem
-import io
+from openmdao.test_suite.components.rectangle import RectangleGroup
 
 from openmdao.utils.testing_utils import use_tempdirs
 from openmdao.utils.assert_utils import assert_near_equal
-
-
-class RectangleComp(om.ExplicitComponent):
-    """
-    A simple Explicit Component that computes the area of a rectangle.
-    """
-
-    def setup(self):
-        self.add_input('length', val=1.)
-        self.add_input('width', val=1.)
-        self.add_output('area', val=1.)
-
-    def setup_partials(self):
-        self.declare_partials('*', '*')
-
-    def compute(self, inputs, outputs):
-        outputs['area'] = inputs['length'] * inputs['width']
-
-
-class RectanglePartial(RectangleComp):
-
-    def compute_partials(self, inputs, partials):
-        partials['area', 'length'] = inputs['width']
-        partials['area', 'width'] = inputs['length']
-
-
-class RectangleJacVec(RectangleComp):
-
-    def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
-        if mode == 'fwd':
-            if 'area' in d_outputs:
-                if 'length' in d_inputs:
-                    d_outputs['area'] += inputs['width'] * d_inputs['length']
-                if 'width' in d_inputs:
-                    d_outputs['area'] += inputs['length'] * d_inputs['width']
-        elif mode == 'rev':
-            if 'area' in d_outputs:
-                if 'length' in d_inputs:
-                    d_inputs['length'] += inputs['width'] * d_outputs['area']
-                if 'width' in d_inputs:
-                    d_inputs['width'] += inputs['length'] * d_outputs['area']
-
-
-class RectangleGroup(om.Group):
-
-    def setup(self):
-        self.add_subsystem('comp1', RectanglePartial(), promotes_inputs=['width', 'length'])
-        self.add_subsystem('comp2', RectangleJacVec(), promotes_inputs=['width', 'length'])
 
 
 @use_tempdirs
@@ -213,11 +167,56 @@ class ListVarsTest(unittest.TestCase):
         prob.run_model()
 
         expected = prob.model.list_vars(units=True, out_stream=None)
-        
+
         case = om.CaseReader('list_vars.db').get_case(0)
 
         io_vars = case.list_vars(units=True, out_stream=None)
         self.assertEqual(dict(io_vars), expected)
+
+    def test_AddSubtractCompTags(self):
+        p = om.Problem()
+        model = p.model
+
+        model.add_recorder(om.SqliteRecorder('addsubtags.db'))
+
+        nn = 1
+        ivc = om.IndepVarComp()
+        ivc.add_output(name='a', shape=(nn,))
+        ivc.add_output(name='b', shape=(nn,))
+
+        model.add_subsystem(name='ivc', subsys=ivc,
+                            promotes_outputs=['a', 'b'])
+
+        adder = model.add_subsystem(name='add_subtract_comp', subsys=om.AddSubtractComp())
+        adder.add_equation('adder_output', ['input_a','input_b'], tags={'foo'})
+        adder.add_equation('adder_output2', ['input_a','input_a'], tags={'bar'})
+
+        model.connect('a', 'add_subtract_comp.input_a')
+        model.connect('b', 'add_subtract_comp.input_b')
+
+        p.setup()
+
+        p['a'] = np.random.rand(nn,)
+        p['b'] = np.random.rand(nn,)
+
+        p.run_model()
+
+        case = om.CaseReader('addsubtags.db').get_case(0)
+
+        a = p['a']
+        b = p['b']
+
+        for obj in (model, case):
+            foo_outputs = obj.list_vars(tags={'foo'}, out_stream=None)
+            self.assertEqual(len(foo_outputs), 1,
+                             msg=f"There should be one output tagged 'foo': {foo_outputs}")
+
+            bar_outputs = obj.list_vars(tags={'bar'}, out_stream=None)
+            self.assertEqual(len(bar_outputs), 1,
+                             msg=f"There should be one output tagged 'bar': {bar_outputs}")
+
+            assert_near_equal(foo_outputs['add_subtract_comp.adder_output']['val'], a + b)
+            assert_near_equal(bar_outputs['add_subtract_comp.adder_output2']['val'], a + a)
 
 
 if __name__ == '__main__':

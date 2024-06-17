@@ -7,6 +7,8 @@ import itertools
 
 from collections import OrderedDict
 
+from fnmatch import fnmatchcase
+
 import numpy as np
 
 from openmdao.core.constants import _DEFAULT_OUT_STREAM
@@ -461,9 +463,6 @@ class Case(object):
 
         abs2meta = self._abs2meta
 
-        if tags:
-            tagset = make_set(tags)
-
         result = {}
 
         abs2prom = self._abs2prom
@@ -521,8 +520,22 @@ class Case(object):
                             continue
 
                     # handle tags
-                    if tags and not tagset & ret_meta['tags']:
-                        continue
+                    if tags:
+                        tagset = make_set(tags)
+                        match_tag = False
+                        for tag in tagset:
+                            if tag == '*':
+                                match_tag = True
+                            else:
+                                for meta_tag in ret_meta.get('tags', {}):
+                                    if fnmatchcase(meta_tag, tag):
+                                        match_tag = True
+                                        break
+                        if not match_tag:
+                            continue
+
+                        # display tags as a list, rather than a set
+                        ret_meta['tags'] = list(ret_meta['tags'])
 
                     ret_meta['prom_name'] = prom
 

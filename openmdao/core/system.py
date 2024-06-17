@@ -3841,9 +3841,6 @@ class System(object):
             disc_metadict = self._var_allprocs_discrete
             need_gather = False  # we can get everything from 'allprocs' dict without gathering
 
-        if tags:
-            tagset = make_set(tags)
-
         result = {}
 
         it = self._var_allprocs_abs2prom if get_remote else self._var_abs2prom
@@ -3951,8 +3948,22 @@ class System(object):
                             continue
 
                     # handle tags
-                    if tags and not tagset & ret_meta['tags']:
-                        continue
+                    if tags:
+                        tagset = make_set(tags)
+                        match_tag = False
+                        for tag in tagset:
+                            if tag == '*':
+                                match_tag = True
+                            else:
+                                for meta_tag in ret_meta.get('tags', {}):
+                                    if fnmatchcase(meta_tag, tag):
+                                        match_tag = True
+                                        break
+                        if not match_tag:
+                            continue
+
+                        # display tags as a list, rather than a set
+                        ret_meta['tags'] = list(ret_meta['tags'])
 
                     ret_meta['prom_name'] = prom
                     ret_meta['discrete'] = abs_name not in all2meta[iotype]
@@ -3978,6 +3989,7 @@ class System(object):
                   desc=False,
                   print_arrays=False,
                   tags=None,
+                  print_tags=False,
                   includes=None,
                   excludes=None,
                   is_indep_var=None,
@@ -4030,6 +4042,8 @@ class System(object):
             User defined tags that can be used to filter what gets listed. Only outputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display
         includes : None, str, or iter of str
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all output variables.
@@ -4153,13 +4167,13 @@ class System(object):
                     if print_max:
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
-        # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
-        if not (outputs and inputs) or (not all_procs and self.comm.rank != 0):
-            return []
+        # # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
+        # if not (outputs and inputs) or (not all_procs and self.comm.rank != 0):
+        #     return []
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
-        if tags:
+        if tags and not print_tags:
             to_remove.append('tags')
         if not prom_name:
             to_remove.append('prom_name')
@@ -4221,6 +4235,7 @@ class System(object):
                     hierarchical=True,
                     print_arrays=False,
                     tags=None,
+                    print_tags=False,
                     includes=None,
                     excludes=None,
                     is_indep_var=None,
@@ -4260,6 +4275,8 @@ class System(object):
             User defined tags that can be used to filter what gets listed. Only inputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display
         includes : None, str, or iter of str
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all input variables.
@@ -4318,7 +4335,7 @@ class System(object):
 
         if inputs:
             to_remove = ['discrete']
-            if tags:
+            if tags and not print_tags:
                 to_remove.append('tags')
             if not prom_name:
                 to_remove.append('prom_name')
@@ -4378,6 +4395,7 @@ class System(object):
                      hierarchical=True,
                      print_arrays=False,
                      tags=None,
+                     print_tags=False,
                      includes=None,
                      excludes=None,
                      is_indep_var=None,
@@ -4432,6 +4450,8 @@ class System(object):
             User defined tags that can be used to filter what gets listed. Only outputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display
         includes : None, str, or iter of str
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all output variables.
@@ -4529,7 +4549,7 @@ class System(object):
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
-        if tags:
+        if tags and not print_tags:
             to_remove.append('tags')
         if not prom_name:
             to_remove.append('prom_name')

@@ -3,7 +3,7 @@ import unittest
 import numpy as np
 
 import openmdao.api as om
-from openmdao.utils.assert_utils import assert_near_equal, assert_warning, assert_warnings
+from openmdao.utils.assert_utils import assert_near_equal
 
 
 class TestIndepVarComp(unittest.TestCase):
@@ -141,7 +141,7 @@ class TestIndepVarComp(unittest.TestCase):
 
     def test_tuple_error(self):
         """Test to see if the objects in the list are actually tuples."""
-            
+
         ivcs = ['indep_var', 'indep_var2']
 
         try:
