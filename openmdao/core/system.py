@@ -4167,9 +4167,9 @@ class System(object):
                     if print_max:
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
-        # # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
-        # if not (outputs and inputs) or (not all_procs and self.comm.rank != 0):
-        #     return []
+        # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
+        if not (outputs and inputs) or (not all_procs and self.comm.rank != 0):
+            return []
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
@@ -4223,7 +4223,10 @@ class System(object):
             write_var_table(self.pathname, var_list, 'all', var_dict,
                             True, '', print_arrays, out_stream)
 
-        return var_dict
+        if return_format == 'dict':
+            return dict(var_dict)
+        else:
+            return list(var_dict.items())
 
     def list_inputs(self,
                     val=True,
