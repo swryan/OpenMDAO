@@ -22,6 +22,9 @@ from openmdao.recorders.sqlite_recorder import format_version as current_version
 
 _AMBIGOUS_PROM_NAME = object()
 
+# string to display when an attribute is not available (e.g. for a discrete)
+NA = 'Unavailable'
+
 
 class Case(object):
     """
@@ -397,8 +400,7 @@ class Case(object):
 
     def get_io_metadata(self, iotypes=('input', 'output'), metadata_keys=None,
                         includes=None, excludes=None, is_indep_var=None, is_design_var=None,
-                        tags=(), get_remote=False, rank=None,
-                        return_rel_names=True):
+                        tags=None, return_rel_names=True):
         """
         Retrieve metadata for a filtered list of variables.
 
@@ -428,12 +430,6 @@ class Case(object):
             User defined tags that can be used to filter what gets listed. Only inputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
-        get_remote : bool
-            If True, retrieve variables from other MPI processes as well.
-        rank : int or None
-            If None, and get_remote is True, retrieve values from all MPI process to all other
-            MPI processes.  Otherwise, if get_remote is True, retrieve values from all MPI
-            processes only to the specified rank.
         return_rel_names : bool
             If True, the names returned will be relative to the scope of this System. Otherwise
             they will be absolute names.
@@ -453,6 +449,8 @@ class Case(object):
             includes = (includes,)
         if isinstance(excludes, str):
             excludes = (excludes,)
+        if isinstance(tags, str):
+            tags = {tags}
 
         if metadata_keys is not None:
             keyset = set(metadata_keys)
@@ -469,6 +467,9 @@ class Case(object):
 
         if is_design_var is not None:
             des_vars = self.get_design_vars(get_sizes=False, use_prom_ivc=False)
+
+        recorded_names = list(self.outputs.absolute_names())
+        print(f"{recorded_names=}")
 
         for iotype in iotypes:
             for abs_name, prom in abs2prom[iotype].items():
@@ -489,7 +490,7 @@ class Case(object):
                             try:
                                 ret_meta[key] = meta[key]
                             except KeyError:
-                                ret_meta[key] = 'Unavailable'
+                                ret_meta[key] = NA
 
                 if ret_meta is not None:
                     # handle is_indep_var
@@ -519,23 +520,18 @@ class Case(object):
                         elif out_name in des_vars:
                             continue
 
+                    meta_tags = ret_meta.get('tags', {})
+
                     # handle tags
                     if tags:
-                        tagset = make_set(tags)
                         match_tag = False
-                        for tag in tagset:
-                            if tag == '*':
-                                match_tag = True
-                            else:
-                                for meta_tag in ret_meta.get('tags', {}):
-                                    if fnmatchcase(meta_tag, tag):
-                                        match_tag = True
-                                        break
+                        for tag in tags:
+                            for meta_tag in meta_tags:
+                                if fnmatchcase(meta_tag, tag):
+                                    match_tag = True
+                                    break
                         if not match_tag:
                             continue
-
-                        # display tags as a list, rather than a set
-                        ret_meta['tags'] = list(ret_meta['tags'])
 
                     ret_meta['prom_name'] = prom
 
@@ -549,7 +545,6 @@ class Case(object):
         return result
 
     def list_vars(self,
-                  explicit=True, implicit=True,
                   val=True,
                   prom_name=True,
                   residuals=False,
@@ -562,11 +557,11 @@ class Case(object):
                   desc=False,
                   print_arrays=False,
                   tags=None,
+                  print_tags=False,
                   includes=None,
                   excludes=None,
                   is_indep_var=None,
                   is_design_var=None,
-                  all_procs=False,
                   list_autoivcs=False,
                   out_stream=_DEFAULT_OUT_STREAM,
                   print_min=False,
@@ -614,6 +609,8 @@ class Case(object):
             User defined tags that can be used to filter what gets listed. Only outputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display.
         includes : None, str, or iter of str
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all output variables.
@@ -654,7 +651,7 @@ class Case(object):
                              "must be a string value of 'list' or 'dict'")
 
         keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyflags = [val, units, shape, global_shape, desc, tags]
+        keyflags = [val, units, shape, global_shape, desc, tags or print_tags]
 
         keys = [name for i, name in enumerate(keynames) if keyflags[i]]
 
@@ -665,8 +662,6 @@ class Case(object):
 
         outputs = self.get_io_metadata(('output',), keys, includes, excludes,
                                        is_indep_var, is_design_var, tags,
-                                       get_remote=True,
-                                       rank=None if all_procs or val or residuals else 0,
                                        return_rel_names=False)
 
         metavalues = val and self.inputs is None
@@ -676,8 +671,6 @@ class Case(object):
 
         inputs = self.get_io_metadata(('input',), keys, includes, excludes,
                                       is_indep_var, is_design_var, tags,
-                                      get_remote=True,
-                                      rank=None if all_procs or val else 0,
                                       return_rel_names=False)
 
         # filter auto_ivcs if requested
@@ -692,7 +685,7 @@ class Case(object):
 
             for name, meta in outputs.items():
                 if val:
-                    # we want value from the input vector, not from the metadata
+                    # we want value from the case, not from the metadata
                     meta['val'] = self.outputs[name]
 
                     if isinstance(meta['val'], np.ndarray):
@@ -714,7 +707,7 @@ class Case(object):
                 del outputs[name]
 
         if val and self.inputs is not None:
-            # we want value from the input vector, not from the metadata
+            # we want value from the case, not from the metadata
             print_options = np.get_printoptions()
             np_precision = print_options['precision']
 
@@ -729,7 +722,7 @@ class Case(object):
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
-        if tags:
+        if tags and not print_tags:
             to_remove.append('tags')
         if not prom_name:
             to_remove.append('prom_name')
@@ -779,6 +772,7 @@ class Case(object):
                     hierarchical=True,
                     print_arrays=False,
                     tags=None,
+                    print_tags=False,
                     includes=None,
                     excludes=None,
                     is_indep_var=None,
@@ -815,6 +809,8 @@ class Case(object):
             User defined tags that can be used to filter what gets listed. Only inputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display.
         includes : str, iter of str, or None
             Glob patterns for pathnames to include in the check. Default is None, which
             includes all.
@@ -851,83 +847,65 @@ class Case(object):
             raise ValueError(f"Invalid value ({badarg}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
+        if not self.inputs:
+            return {} if return_format == 'dict' else []
+
+        metavalues = val and self.inputs is None
+
+        keynames = ['val', 'units', 'shape',  'desc', 'tags']
+        keyvals = [metavalues, units, shape, desc, tags or print_tags]
+        keys = [n for i, n in enumerate(keynames) if keyvals[i]]
+
+        inputs = self.get_io_metadata(('input',), keys, includes, excludes,
+                                      is_indep_var, is_design_var, tags,
+                                      return_rel_names=False)
+
+        if inputs:
+            to_remove = ['discrete']
+            if tags and not print_tags:
+                to_remove.append('tags')
+            if not prom_name:
+                to_remove.append('prom_name')
+            for _, meta in inputs.items():
+                for key in to_remove:
+                    del meta[key]
+
+        abs2prom = self._abs2prom['input']
+        prom2abs = self._prom2abs['input']
         abs2meta = self._abs2meta
-        inputs = []
 
-        # string to display when an attribute is not available (e.g. for a discrete)
-        NA = 'Unavailable'
+        for n in self.inputs.absolute_names():
+            meta = abs2meta[n]
+            print(f"{n=} {meta=}")
 
-        if isinstance(includes, str):
-            includes = [includes, ]
+            if val:
+                # we want value from the input vector, not from the metadata
+                print_options = np.get_printoptions()
+                np_precision = print_options['precision']
 
-        if isinstance(excludes, str):
-            excludes = [excludes, ]
+                try:
+                    meta['val'] = self.inputs[n]
 
-        if self.inputs is not None:
-            print_options = np.get_printoptions()
-            np_precision = print_options['precision']
-
-            if is_design_var is not None:
-                des_vars = self._get_variables_of_type('desvar')
-
-            for var_name in self.inputs.absolute_names():
-                meta = abs2meta[var_name]
-
-                # Filter based on tags
-                if tags and not (make_set(tags) & make_set(meta['tags'])):
-                    continue
-
-                var_name_prom = self._abs2prom['input'][var_name]
-
-                if not match_prom_or_abs(var_name, var_name_prom, includes, excludes):
-                    continue
-
-                # handle is_indep_var
-                if is_indep_var is not None:
-                    src_name = self._conns[var_name]
-                    src_name_prom = self._abs2prom['output'][src_name]
-                    src_meta = abs2meta[src_name]
-                    if is_indep_var is True and 'openmdao:indep_var' not in src_meta['tags']:
-                        continue
-                    elif is_indep_var is False and 'openmdao:indep_var' in src_meta['tags']:
-                        continue
-
-                # handle is_design_var
-                if is_design_var is not None:
-                    src_name = self._conns[var_name]
-                    src_name_prom = self._abs2prom['output'][src_name]
-                    if src_name_prom.startswith('_auto_ivc.'):
-                        src_name_prom = self._auto_ivc_map[src_name_prom]
-                    if is_design_var is True and src_name_prom not in des_vars:
-                        continue
-                    elif is_design_var is False and src_name_prom in des_vars:
-                        continue
-
-                var_val = self.inputs[var_name]
-
-                var_meta = {}
-                if val:
-                    var_meta['val'] = var_val
-                    if isinstance(var_val, np.ndarray):
+                    if isinstance(meta['val'], np.ndarray):
                         if print_min:
-                            var_meta['min'] = np.round(np.min(var_val), np_precision)
+                            meta['min'] = np.round(np.min(meta['val']), np_precision)
 
                         if print_max:
-                            var_meta['max'] = np.round(np.max(var_val), np_precision)
+                            meta['max'] = np.round(np.max(meta['val']), np_precision)
+                except KeyError:
+                    meta['val'] = NA
 
-                if prom_name:
-                    var_meta['prom_name'] = var_name_prom
-                if units:
-                    var_meta['units'] = meta.get('units', NA)
-                if shape:
-                    try:
-                        var_meta['shape'] = var_val.shape
-                    except AttributeError:
-                        var_meta['shape'] = NA
-                if desc:
-                    var_meta['desc'] = meta['desc']
-
-                inputs.append((var_name, var_meta))
+            if prom_name:
+                meta['prom_name'] = abs2prom[n]
+            if units:
+                meta['units'] = abs2meta[n].get('units', NA)
+            if shape:
+                try:
+                    meta['shape'] = self.inputs[n].shape
+                except AttributeError:
+                    meta['shape'] = NA
+            if desc:
+                meta['desc'] = meta['desc']
 
         if out_stream:
             if self.inputs:
@@ -937,10 +915,7 @@ class Case(object):
                 ostream.write('WARNING: Inputs not recorded. Make sure your recording ' +
                               'settings have record_inputs set to True\n')
 
-        if return_format == 'dict':
-            return dict(inputs)
-        else:
-            return inputs
+        return dict(inputs) if return_format == 'dict' else inputs
 
     def list_outputs(self,
                      explicit=True, implicit=True,
@@ -956,6 +931,7 @@ class Case(object):
                      hierarchical=True,
                      print_arrays=False,
                      tags=None,
+                     print_tags=False,
                      includes=None,
                      excludes=None,
                      is_indep_var=None,
@@ -1007,6 +983,8 @@ class Case(object):
             User defined tags that can be used to filter what gets listed. Only outputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display.
         includes : str, iter of str, or None
             Glob patterns for pathnames to include in the check. Default is None, which
             includes all.
@@ -1045,110 +1023,112 @@ class Case(object):
             raise ValueError(f"Invalid value ({badarg}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
+        keynames = ['val', 'units', 'shape', 'desc', 'tags']
+        keyflags = [val, units, shape, desc, tags or print_tags]
+
+        keys = [name for i, name in enumerate(keynames) if keyflags[i]]
+
+        if bounds:
+            keys.extend(('lower', 'upper'))
+        if scaling:
+            keys.extend(('ref', 'ref0', 'res_ref'))
+
+        outputs = self.get_io_metadata(('output',), keys, includes, excludes,
+                                       is_indep_var, is_design_var, tags,
+                                       return_rel_names=False)
+
+        # filter auto_ivcs if requested
+        if outputs and not list_autoivcs:
+            outputs = {n: m for n, m in outputs.items() if not n.startswith('_auto_ivc.')}
+
+        # get values & resids
+        if self.outputs is not None:
+            abs2prom = self._abs2prom['output']
+            abs2meta = self._abs2meta
+
+            to_remove = []
+            print_options = np.get_printoptions()
+            np_precision = print_options['precision']
+
+            # from pprint import pprint
+            # print(f"io_meta:")
+            # pprint(outputs)
+            # print(f"case outputs:")
+            # pprint(self.outputs)
+
+            for name, meta in outputs.items():
+                if val:
+                    meta['val'] = self.outputs[name]
+
+                    if isinstance(meta['val'], np.ndarray):
+                        if print_min:
+                            meta['min'] = np.round(np.min(meta['val']), np_precision)
+
+                        if print_max:
+                            meta['max'] = np.round(np.max(meta['val']), np_precision)
+
+                if prom_name:
+                    meta['prom_name'] = abs2prom[name]
+                if units:
+                    meta['units'] = abs2meta[name].get('units', NA)
+                if shape:
+                    try:
+                        meta['shape'] = self.outputs[name].shape
+                    except AttributeError:
+                        meta['shape'] = NA
+                if desc:
+                    meta['desc'] = meta['desc']
+
+                # check if residuals were recorded, skip if within specifed tolerance
+                if residuals and self.residuals and name in self.residuals.absolute_names():
+                    resids = self.residuals[name]
+                    if residuals_tol and np.linalg.norm(resids) < residuals_tol:
+                        continue
+                else:
+                    resids = 'Not Recorded'
+
+            # remove any outputs that don't pass the residuals_tol filter
+            for name in to_remove:
+                del outputs[name]
+
+        # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
+        if not outputs:
+            return {} if return_format == 'dict' else []
+
+        # remove metadata we don't want to show/return
+        to_remove = ['discrete']
+        if tags and not print_tags:
+            to_remove.append('tags')
+        if not prom_name:
+            to_remove.append('prom_name')
+        for _, meta in outputs.items():
+            for key in to_remove:
+                del meta[key]
+
         abs2meta = self._abs2meta
-        expl_outputs = []
-        impl_outputs = []
 
-        # string to display when an attribute is not available (e.g. for a discrete)
-        NA = 'Unavailable'
-
-        if isinstance(includes, str):
-            includes = [includes, ]
-
-        if isinstance(excludes, str):
-            excludes = [excludes, ]
-
-        print_options = np.get_printoptions()
-        np_precision = print_options['precision']
-
-        if is_design_var is not None:
-            des_vars = self._get_variables_of_type('desvar')
-
-        for var_name in self.outputs.absolute_names():
-            if not list_autoivcs and var_name.startswith('_auto_ivc.'):
-                continue
-
-            meta = abs2meta[var_name]
-
-            # Filter based on tags
-            if tags and not (make_set(tags) & make_set(meta['tags'])):
-                continue
-
-            var_name_prom = self._abs2prom['output'][var_name]
-
-            if not match_prom_or_abs(var_name, var_name_prom, includes, excludes):
-                continue
-
-            # handle is_indep_var
-            if is_indep_var is not None:
-                if is_indep_var is True and 'openmdao:indep_var' not in meta['tags']:
-                    continue
-                elif is_indep_var is False and 'openmdao:indep_var' in meta['tags']:
-                    continue
-
-            # handle is_design_var
-            if is_design_var is not None:
-                var_name_prom = self._abs2prom['output'][var_name]
-                if var_name_prom.startswith('_auto_ivc.'):
-                    var_name_prom = self._auto_ivc_map[var_name_prom]
-                if is_design_var is True and var_name_prom not in des_vars:
-                    continue
-                elif is_design_var is False and var_name_prom in des_vars:
-                    continue
-
-            # check if residuals were recorded, skip if within specifed tolerance
-            if residuals and self.residuals and var_name in self.residuals.absolute_names():
-                resids = self.residuals[var_name]
-                if residuals_tol and np.linalg.norm(resids) < residuals_tol:
-                    continue
-            else:
-                resids = 'Not Recorded'
-
-            var_val = self.outputs[var_name]
-
-            var_meta = {}
-            if val:
-                var_meta['val'] = var_val
-                if isinstance(var_val, np.ndarray):
-                    if print_min:
-                        var_meta['min'] = np.round(np.min(var_val), np_precision)
-
-                    if print_max:
-                        var_meta['max'] = np.round(np.max(var_val), np_precision)
-            if prom_name:
-                var_meta['prom_name'] = var_name_prom
-            if residuals:
-                var_meta['resids'] = resids
-            if units:
-                var_meta['units'] = meta.get('units', NA)
-            if shape:
-                try:
-                    var_meta['shape'] = var_val.shape
-                except AttributeError:
-                    var_meta['shape'] = NA
-            if bounds:
-                var_meta['lower'] = meta.get('lower', NA)
-                var_meta['upper'] = meta.get('upper', NA)
-            if scaling:
-                var_meta['ref'] = meta.get('ref', NA)
-                var_meta['ref0'] = meta.get('ref0', NA)
-                var_meta['res_ref'] = meta.get('res_ref', NA)
-            if desc:
-                var_meta['desc'] = meta['desc']
-            if meta['explicit']:
-                expl_outputs.append((var_name, var_meta))
-            else:
-                impl_outputs.append((var_name, var_meta))
-
-        if out_stream:
-            if not self.outputs:
-                ostream = sys.stdout if out_stream is _DEFAULT_OUT_STREAM else out_stream
-                ostream.write('WARNING: Outputs not recorded. Make sure your recording ' +
-                              'settings have record_outputs set to True\n')
-            if explicit:
+        if explicit:
+            expl_outputs = {n: m for n, m in outputs.items() if abs2meta[n].get('explicit')}
+            if out_stream:
                 self._write_table('explicit', expl_outputs, hierarchical, print_arrays, out_stream)
-            if implicit:
+
+            expl_outputs = list(expl_outputs.items())
+
+        if implicit:
+            impl_outputs = {}
+            if residuals_tol:
+                for n, m in outputs.items():
+                    if not m['explicit']:
+                        if residuals_tol and 'resids' in m:
+                            if np.linalg.norm(m['resids']) >= residuals_tol:
+                                impl_outputs[n] = m
+                        else:
+                            impl_outputs[n] = m
+            else:
+                impl_outputs = {n: m for n, m in outputs.items() if not abs2meta[n].get('explicit')}
+            if out_stream:
                 self._write_table('implicit', impl_outputs, hierarchical, print_arrays, out_stream)
+            impl_outputs = list(impl_outputs.items())
 
         if explicit and implicit:
             outputs = expl_outputs + impl_outputs
@@ -1159,10 +1139,7 @@ class Case(object):
         else:
             raise RuntimeError('You have excluded both Explicit and Implicit components.')
 
-        if return_format == 'dict':
-            return dict(outputs)
-        else:
-            return outputs
+        return dict(outputs) if return_format == 'dict' else outputs
 
     def _write_table(self, var_type, var_data, hierarchical, print_arrays, out_stream):
         """

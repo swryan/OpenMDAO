@@ -3753,7 +3753,7 @@ class System(object):
 
     def get_io_metadata(self, iotypes=('input', 'output'), metadata_keys=None,
                         includes=None, excludes=None, is_indep_var=None, is_design_var=None,
-                        tags=(), get_remote=False, rank=None,
+                        tags=None, get_remote=False, rank=None,
                         return_rel_names=True):
         """
         Retrieve metadata for a filtered list of variables.
@@ -3821,6 +3821,8 @@ class System(object):
             includes = (includes,)
         if isinstance(excludes, str):
             excludes = (excludes,)
+        if isinstance(tags, str):
+            tags = {tags}
 
         gather_keys = {'val', 'src_indices'}
         need_gather = get_remote and self.comm is not None and self.comm.size > 1
@@ -3947,23 +3949,18 @@ class System(object):
                         elif out_name in des_vars:
                             continue
 
+                    meta_tags = ret_meta.get('tags', {})
+
                     # handle tags
                     if tags:
-                        tagset = make_set(tags)
                         match_tag = False
-                        for tag in tagset:
-                            if tag == '*':
-                                match_tag = True
-                            else:
-                                for meta_tag in ret_meta.get('tags', {}):
-                                    if fnmatchcase(meta_tag, tag):
-                                        match_tag = True
-                                        break
+                        for tag in tags:
+                            for meta_tag in meta_tags:
+                                if fnmatchcase(meta_tag, tag):
+                                    match_tag = True
+                                    break
                         if not match_tag:
                             continue
-
-                        # display tags as a list, rather than a set
-                        ret_meta['tags'] = list(ret_meta['tags'])
 
                     ret_meta['prom_name'] = prom
                     ret_meta['discrete'] = abs_name not in all2meta[iotype]
@@ -3976,7 +3973,6 @@ class System(object):
         return result
 
     def list_vars(self,
-                  explicit=True, implicit=True,
                   val=True,
                   prom_name=True,
                   residuals=False,
@@ -4090,7 +4086,7 @@ class System(object):
                              "must be a string value of 'list' or 'dict'")
 
         keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyflags = [val, units, shape, global_shape, desc, tags]
+        keyflags = [val, units, shape, global_shape, desc, tags or print_tags]
 
         keys = [name for i, name in enumerate(keynames) if keyflags[i]]
 
@@ -4168,12 +4164,12 @@ class System(object):
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
         # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
-        if not (outputs and inputs) or (not all_procs and self.comm.rank != 0):
-            return []
+        if not (outputs or inputs) or (not all_procs and self.comm.rank != 0):
+            return {} if return_format == 'dict' else []
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
-        if tags and not print_tags:
+        if not print_tags:
             to_remove.append('tags')
         if not prom_name:
             to_remove.append('prom_name')
@@ -4223,10 +4219,7 @@ class System(object):
             write_var_table(self.pathname, var_list, 'all', var_dict,
                             True, '', print_arrays, out_stream)
 
-        if return_format == 'dict':
-            return dict(var_dict)
-        else:
-            return list(var_dict.items())
+        return var_dict if return_format == 'dict' else list(var_dict.items())
 
     def list_inputs(self,
                     val=True,
@@ -4327,7 +4320,7 @@ class System(object):
         metavalues = val and self._inputs is None
 
         keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyvals = [metavalues, units, shape, global_shape, desc, tags is not None]
+        keyvals = [metavalues, units, shape, global_shape, desc, tags or print_tags]
         keys = [n for i, n in enumerate(keynames) if keyvals[i]]
 
         inputs = self.get_io_metadata(('input',), keys, includes, excludes,
@@ -4362,10 +4355,7 @@ class System(object):
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
         if not inputs or (not all_procs and self.comm.rank != 0):
-            if return_format == 'dict':
-                return {}
-            else:
-                return []
+            return {} if return_format == 'dict' else []
 
         if out_stream:
             self._write_table('input', inputs, hierarchical, print_arrays, all_procs,
@@ -4378,10 +4368,7 @@ class System(object):
         else:
             inputs = list(inputs.items())
 
-        if return_format == 'dict':
-            return dict(inputs)
-        else:
-            return inputs
+        return dict(inputs) if return_format == 'dict' else inputs
 
     def list_outputs(self,
                      explicit=True, implicit=True,
@@ -4495,7 +4482,7 @@ class System(object):
                              "must be a string value of 'list' or 'dict'")
 
         keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyflags = [val, units, shape, global_shape, desc, tags]
+        keyflags = [val, units, shape, global_shape, desc, tags or print_tags]
 
         keys = [name for i, name in enumerate(keynames) if keyflags[i]]
 
@@ -4548,7 +4535,7 @@ class System(object):
 
         # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
         if not outputs or (not all_procs and self.comm.rank != 0):
-            return []
+            return {} if return_format == 'dict' else []
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
@@ -4603,10 +4590,7 @@ class System(object):
         else:
             raise RuntimeError('You have excluded both Explicit and Implicit components.')
 
-        if return_format == 'dict':
-            return dict(outputs)
-        else:
-            return outputs
+        return dict(outputs) if return_format == 'dict' else outputs
 
     def _write_table(self, var_type, var_data, hierarchical, print_arrays, all_procs, out_stream):
         """

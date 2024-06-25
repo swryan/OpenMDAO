@@ -1035,6 +1035,9 @@ class TestSqliteCaseReader(unittest.TestCase):
         prob.run_driver()
         prob.cleanup()
 
+        # from openmdao.api import n2
+        # n2(prob)
+
         cr = om.CaseReader(self.filename)
 
         # check the system case for 'd1' (there should be only one output, 'd1.y1')
@@ -1058,6 +1061,9 @@ class TestSqliteCaseReader(unittest.TestCase):
                 'desc': ''
             }
         }
+        print("returned outputs:\n---------------------------")
+        from pprint import pprint
+        pprint(outputs)
 
         self.assertEqual(len(outputs), 1)
         vals = outputs['d1.y1']
@@ -4288,8 +4294,12 @@ class TestSqliteCaseReaderLegacy(unittest.TestCase):
          ]
 
         stream = StringIO()
+        case.list_vars()
+        case.list_inputs(hierarchical=True)
+        case.list_inputs(hierarchical=False)
         case.list_inputs(hierarchical=False, out_stream=stream)
         text = stream.getvalue().split('\n')
+        print('\n'.join(text))
         for i, line in enumerate(expected):
             if i == 0:
                 self.assertEqual(text[i], line)
