@@ -469,7 +469,6 @@ class Case(object):
             des_vars = self.get_design_vars(get_sizes=False, use_prom_ivc=False)
 
         recorded_names = list(self.outputs.absolute_names())
-        print(f"{recorded_names=}")
 
         for iotype in iotypes:
             for abs_name, prom in abs2prom[iotype].items():
@@ -572,10 +571,6 @@ class Case(object):
 
         Parameters
         ----------
-        explicit : bool, optional
-            Include outputs from explicit components. Default is True.
-        implicit : bool, optional
-            Include outputs from implicit components. Default is True.
         val : bool, optional
             When True, display output values. Default is True.
         prom_name : bool, optional
@@ -624,8 +619,6 @@ class Case(object):
             If None (the default), do no additional filtering of the inputs.
             If True, list only inputs connected to outputs that are driver design variables.
             If False, list only inputs _not_ connected to outputs that are driver design variables.
-        all_procs : bool, optional
-            When True, display output on all processors. Default is False.
         list_autoivcs : bool
             If True, include auto_ivc outputs in the listing.  Defaults to False.
         out_stream : file-like
