@@ -4323,18 +4323,6 @@ class System(object):
                                       rank=None if all_procs or val else 0,
                                       return_rel_names=False)
 
-        if inputs:
-            to_remove = ['discrete']
-            if not print_tags:
-                to_remove.append('tags')
-            if not prom_name:
-                to_remove.append('prom_name')
-            for _, meta in inputs.items():
-                for key in to_remove:
-                    try:
-                        del meta[key]
-                    except KeyError:
-                        pass
 
         if val and self._inputs is not None:
             # we want value from the input vector, not from the metadata
@@ -4351,8 +4339,21 @@ class System(object):
                     if print_max:
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
+        # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
         if not inputs or (not all_procs and self.comm.rank != 0):
             return {} if return_format == 'dict' else []
+
+        to_remove = ['discrete']
+        if not print_tags:
+            to_remove.append('tags')
+        if not prom_name:
+            to_remove.append('prom_name')
+        for _, meta in inputs.items():
+            for key in to_remove:
+                try:
+                    del meta[key]
+                except KeyError:
+                    pass
 
         if out_stream:
             self._write_table('input', inputs, hierarchical, print_arrays, all_procs,
