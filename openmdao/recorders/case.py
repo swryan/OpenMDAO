@@ -427,8 +427,8 @@ class Case(object):
             If False, list only inputs _not_ connected to outputs tagged `openmdao:indep_var`.
         is_design_var : bool or None
             If None (the default), do no additional filtering of the inputs.
-            If True, list only inputs connected to outputs that are driver design variables.
-            If False, list only inputs _not_ connected to outputs that are driver design variables.
+            If True, list only outputs and connected inputs that are driver design variables.
+            If False, list only outputs and connected inputs that are _not_ driver design variables.
         tags : str or iter of strs
             User defined tags that can be used to filter what gets listed. Only inputs with the
             given tags will be listed.
@@ -465,6 +465,7 @@ class Case(object):
 
         if is_design_var is not None:
             des_vars = self.get_design_vars()
+            auto_ivc_map = self._auto_ivc_map
 
         for iotype in iotypes:
             data = getattr(self, f'{iotype}s')
@@ -516,10 +517,10 @@ class Case(object):
                     else:
                         # input, get connected output
                         src_name = self._conns[abs_name]
-                        src_name_prom = abs2prom['output'][src_name]
-                        if src_name_prom.startswith('_auto_ivc.'):
-                            src_name_prom = self._auto_ivc_map[src_name_prom]
-                        out_name = src_name_prom
+                        out_name = abs2prom['output'][src_name]
+
+                    if out_name.startswith('_auto_ivc.'):
+                        out_name = auto_ivc_map[out_name]
 
                     if is_design_var:
                         if out_name not in des_vars:
@@ -542,6 +543,9 @@ class Case(object):
                 ret_meta['io'] = iotype
 
                 ret_meta['discrete'] = 'discrete' in abs2meta[abs_name]
+
+                if iotype == 'output':
+                    ret_meta['explicit'] = True if meta.get('explicit') else False
 
                 if prom_name:
                     ret_meta['prom_name'] = prom
@@ -682,7 +686,7 @@ class Case(object):
                             meta['max'] = np.round(np.max(meta['val']), np_precision)
 
                 if residuals or residuals_tol:
-                    resids = self.resids[name]
+                    resids = self.residuals[name]
                     if residuals_tol and np.linalg.norm(resids) < residuals_tol:
                         to_remove.append(name)
                     elif residuals:
@@ -719,10 +723,10 @@ class Case(object):
         var_dict.update(inputs)
 
         # remove metadata we don't want to show/return
-        to_remove = ['discrete']
+        to_remove = ['discrete', 'explicit']
         if not print_tags:
             to_remove.append('tags')
-        for _, meta in itertools.chain(var_dict.items()):
+        for meta in var_dict.values():
             for key in to_remove:
                 try:
                     del meta[key]
@@ -738,6 +742,7 @@ class Case(object):
                     prom_name=True,
                     units=False,
                     shape=False,
+                    global_shape=False,
                     desc=False,
                     hierarchical=True,
                     print_arrays=False,
@@ -765,6 +770,8 @@ class Case(object):
             When True, display/return units. Default is False.
         shape : bool, optional
             When True, display/return the shape of the value. Default is False.
+        global_shape : bool, optional
+            When True, display/return the global shape of the value. Default is False.
         desc : bool, optional
             When True, display/return description. Default is False.
         hierarchical : bool, optional
@@ -813,14 +820,15 @@ class Case(object):
             List or dict of input names and other optional information about those inputs.
         """
         if return_format not in ('list', 'dict'):
-            raise ValueError(f"Invalid value ({return_format}) for return_format, "
+            badarg = f"'{return_format}'" if isinstance(return_format, str) else f"{return_format}"
+            raise ValueError(f"Invalid value ({badarg}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
         if not self.inputs:
             return {} if return_format == 'dict' else []
 
-        keynames = ['val', 'units', 'shape', 'desc', 'tags']
-        keyvals = [val, units, shape, desc, tags or print_tags]
+        keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
+        keyvals = [val, units, shape, global_shape, desc, tags or print_tags]
         keys = [n for i, n in enumerate(keynames) if keyvals[i]]
 
         inputs = self.get_io_metadata('input', keys, prom_name, includes, excludes,
@@ -846,6 +854,17 @@ class Case(object):
                 ostream.write('WARNING: Inputs not recorded. Make sure your recording ' +
                               'settings have record_inputs set to True\n')
 
+        # remove metadata we don't want to show/return
+        to_remove = ['discrete']
+        if not print_tags:
+            to_remove.append('tags')
+        for meta in inputs.values():
+            for key in to_remove:
+                try:
+                    del meta[key]
+                except KeyError:
+                    pass
+
         return inputs if return_format == 'dict' else list(inputs.items())
 
     def list_outputs(self,
@@ -856,6 +875,7 @@ class Case(object):
                      residuals_tol=None,
                      units=False,
                      shape=False,
+                     global_shape=False,
                      bounds=False,
                      scaling=False,
                      desc=False,
@@ -896,6 +916,8 @@ class Case(object):
             When True, display/return units. Default is False.
         shape : bool, optional
             When True, display/return the shape of the value. Default is False.
+        global_shape : bool, optional
+            When True, display/return the global shape of the value. Default is False.
         bounds : bool, optional
             When True, display/return bounds (lower and upper). Default is False.
         scaling : bool, optional
@@ -954,97 +976,71 @@ class Case(object):
             raise ValueError(f"Invalid value ({badarg}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
-        abs2meta = self._abs2meta
-        expl_outputs = []
-        impl_outputs = []
+        if not self.outputs:
+            return {} if return_format == 'dict' else []
 
-        if isinstance(includes, str):
-            includes = [includes, ]
+        keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
+        keyvals = [val, units, shape, global_shape, desc, tags or print_tags]
+        keys = [n for i, n in enumerate(keynames) if keyvals[i]]
 
-        if isinstance(excludes, str):
-            excludes = [excludes, ]
+        if bounds:
+            keys.extend(('lower', 'upper'))
+        if scaling:
+            keys.extend(('ref', 'ref0', 'res_ref'))
 
-        print_options = np.get_printoptions()
-        np_precision = print_options['precision']
+        outputs = self.get_io_metadata('output', keys, prom_name, includes, excludes,
+                                      is_indep_var, is_design_var, tags)
 
-        if is_design_var is not None:
-            des_vars = self._get_variables_of_type('desvar')
+        # filter auto_ivcs if requested
+        if outputs and not list_autoivcs:
+            outputs = {n: m for n, m in outputs.items() if not n.startswith('_auto_ivc.')}
 
-        for var_name in self.outputs.absolute_names():
-            if not list_autoivcs and var_name.startswith('_auto_ivc.'):
-                continue
+        # get output values & resids
+        if outputs and (val or residuals or residuals_tol):
+            to_remove = []
+            print_options = np.get_printoptions()
+            np_precision = print_options['precision']
 
-            meta = abs2meta[var_name]
+            for name, meta in outputs.items():
+                if val:
+                    # we want value from the case, not from the metadata
+                    meta['val'] = self.outputs[name]
 
-            # Filter based on tags
-            if tags and not (make_set(tags) & make_set(meta['tags'])):
-                continue
+                    if isinstance(meta['val'], np.ndarray):
+                        if print_min:
+                            meta['min'] = np.round(np.min(meta['val']), np_precision)
 
-            var_name_prom = self._abs2prom['output'][var_name]
+                        if print_max:
+                            meta['max'] = np.round(np.max(meta['val']), np_precision)
 
-            if not match_prom_or_abs(var_name, var_name_prom, includes, excludes):
-                continue
+                if residuals or residuals_tol:
+                    try:
+                        resids = self.residuals[name]
+                        if residuals_tol and np.linalg.norm(resids) < residuals_tol:
+                            to_remove.append(name)
+                        elif residuals:
+                            meta['resids'] = resids
+                    except KeyError:
+                        if residuals:
+                            meta['resids'] = 'Not Recorded'
 
-            # handle is_indep_var
-            if is_indep_var is not None:
-                if is_indep_var is True and 'openmdao:indep_var' not in meta['tags']:
-                    continue
-                elif is_indep_var is False and 'openmdao:indep_var' in meta['tags']:
-                    continue
+            # remove any outputs that don't pass the residuals_tol filter
+            for name in to_remove:
+                del outputs[name]
 
-            # handle is_design_var
-            if is_design_var is not None:
-                var_name_prom = self._abs2prom['output'][var_name]
-                if var_name_prom.startswith('_auto_ivc.'):
-                    var_name_prom = self._auto_ivc_map[var_name_prom]
-                if is_design_var is True and var_name_prom not in des_vars:
-                    continue
-                elif is_design_var is False and var_name_prom in des_vars:
-                    continue
+        expl_outputs = {n: m for n, m in outputs.items() if m['explicit']}
+        impl_outputs = {n: m for n, m in outputs.items() if not m['explicit']}
 
-            # check if residuals were recorded, skip if within specifed tolerance
-            if residuals and self.residuals and var_name in self.residuals.absolute_names():
-                resids = self.residuals[var_name]
-                if residuals_tol and np.linalg.norm(resids) < residuals_tol:
-                    continue
-            else:
-                resids = 'Not Recorded'
-
-            var_val = self.outputs[var_name]
-
-            var_meta = {}
-            if val:
-                var_meta['val'] = var_val
-                if isinstance(var_val, np.ndarray):
-                    if print_min:
-                        var_meta['min'] = np.round(np.min(var_val), np_precision)
-
-                    if print_max:
-                        var_meta['max'] = np.round(np.max(var_val), np_precision)
-            if prom_name:
-                var_meta['prom_name'] = var_name_prom
-            if residuals:
-                var_meta['resids'] = resids
-            if units:
-                var_meta['units'] = meta.get('units', NA)
-            if shape:
+        # remove metadata we don't want to show/return
+        to_remove = ['discrete', 'explicit']
+        if not print_tags:
+            to_remove.append('tags')
+        for meta in itertools.chain(outputs.values(), expl_outputs.values(), impl_outputs.values()):
+            for key in to_remove:
                 try:
-                    var_meta['shape'] = var_val.shape
-                except AttributeError:
-                    var_meta['shape'] = NA
-            if bounds:
-                var_meta['lower'] = meta.get('lower', NA)
-                var_meta['upper'] = meta.get('upper', NA)
-            if scaling:
-                var_meta['ref'] = meta.get('ref', NA)
-                var_meta['ref0'] = meta.get('ref0', NA)
-                var_meta['res_ref'] = meta.get('res_ref', NA)
-            if desc:
-                var_meta['desc'] = meta['desc']
-            if meta['explicit']:
-                expl_outputs.append((var_name, var_meta))
-            else:
-                impl_outputs.append((var_name, var_meta))
+                    del meta[key]
+                except KeyError:
+                    pass
 
         if out_stream:
             if not self.outputs:
@@ -1057,7 +1053,7 @@ class Case(object):
                 self._write_table('implicit', impl_outputs, hierarchical, print_arrays, out_stream)
 
         if explicit and implicit:
-            outputs = expl_outputs + impl_outputs
+            pass
         elif explicit:
             outputs = expl_outputs
         elif implicit:
@@ -1065,7 +1061,7 @@ class Case(object):
         else:
             raise RuntimeError('You have excluded both Explicit and Implicit components.')
 
-        return dict(outputs) if return_format == 'dict' else outputs
+        return outputs if return_format == 'dict' else list(outputs.items())
 
     def _write_table(self, var_type, var_data, hierarchical, print_arrays, out_stream):
         """
