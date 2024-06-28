@@ -4307,8 +4307,7 @@ class System(object):
                           "any `set_val` calls.")
 
         if return_format not in ('list', 'dict'):
-            badarg = f"'{return_format}'" if isinstance(return_format, str) else f"{return_format}"
-            raise ValueError(f"Invalid value ({badarg}) for return_format, "
+            raise ValueError(f"Invalid value ({return_format}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
         metavalues = val and self._inputs is None

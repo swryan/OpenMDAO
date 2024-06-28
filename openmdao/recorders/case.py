@@ -398,9 +398,9 @@ class Case(object):
         """
         return self._get_variables_of_type('response', scaled, use_indices)
 
-    def get_io_metadata(self, iotypes=('input', 'output'), metadata_keys=None,
+    def get_io_metadata(self, iotypes=('input', 'output'), metadata_keys=None, prom_name=True,
                         includes=None, excludes=None, is_indep_var=None, is_design_var=None,
-                        tags=None, return_rel_names=True):
+                        tags=None):
         """
         Retrieve metadata for a filtered list of variables.
 
@@ -413,6 +413,9 @@ class Case(object):
             available 'allprocs' metadata.  If 'val' or 'src_indices' are required,
             their keys must be provided explicitly since they are not found in the 'allprocs'
             metadata and must be retrieved from local metadata located in each process.
+        prom_name : bool, optional
+            When True, include the promoted name of the variable in the metadata.
+            Default is True.
         includes : str, iter of str or None
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all variables.
@@ -430,9 +433,6 @@ class Case(object):
             User defined tags that can be used to filter what gets listed. Only inputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
-        return_rel_names : bool
-            If True, the names returned will be relative to the scope of this System. Otherwise
-            they will be absolute names.
 
         Returns
         -------
@@ -456,90 +456,94 @@ class Case(object):
             keyset = set(metadata_keys)
             diff = keyset - allowed_meta_names
             if diff:
-                raise RuntimeError(f"{self.msginfo}: {sorted(diff)} are not valid metadata entry "
-                                   "names.")
+                raise RuntimeError(f"Case: {sorted(diff)} are not valid metadata entry names.")
 
         abs2meta = self._abs2meta
+        abs2prom = self._abs2prom
 
         result = {}
 
-        abs2prom = self._abs2prom
-
         if is_design_var is not None:
-            des_vars = self.get_design_vars(get_sizes=False, use_prom_ivc=False)
-
-        recorded_names = list(self.outputs.absolute_names())
+            des_vars = self.get_design_vars()
 
         for iotype in iotypes:
-            for abs_name, prom in abs2prom[iotype].items():
+            data = getattr(self, f'{iotype}s')
+
+            if data is None:
+                # data not recorded for this i/o type
+                continue
+
+            for abs_name in data.absolute_names():
+                prom = abs2prom[iotype][abs_name]
+
                 if not match_prom_or_abs(abs_name, prom, includes, excludes):
                     continue
 
-                rel_name = abs_name
                 meta = abs2meta[abs_name] if abs_name in abs2meta else None
 
                 if meta is None:
-                    ret_meta = None
+                    continue
+
+                if metadata_keys is None:
+                    ret_meta = dict(meta)
                 else:
-                    if metadata_keys is None:
-                        ret_meta = dict(meta)
+                    ret_meta = {}
+                    for key in keyset:
+                        try:
+                            ret_meta[key] = tuple(meta[key]) if 'shape' in key else meta[key]
+                        except KeyError:
+                            ret_meta[key] = NA
+
+                # handle is_indep_var
+                if is_indep_var is not None:
+                    if iotype == 'output':
+                        out_meta = meta
                     else:
-                        ret_meta = {}
-                        for key in keyset:
-                            try:
-                                ret_meta[key] = meta[key]
-                            except KeyError:
-                                ret_meta[key] = NA
+                        src_name = self._conns[abs_name]
+                        out_meta = abs2meta[src_name]
 
-                if ret_meta is not None:
-                    # handle is_indep_var
-                    if is_indep_var is not None:
-                        if iotype == 'output':
-                            out_meta = meta
-                        else:
-                            src_name = self.get_source(abs_name)
-                            out_meta = abs2meta['output'][src_name]
-
-                        src_tags = out_meta['tags'] if 'tags' in out_meta else {}
-                        if is_indep_var:
-                            if 'openmdao:indep_var' not in src_tags:
-                                continue
-                        elif 'openmdao:indep_var' in src_tags:
+                    src_tags = out_meta['tags'] if 'tags' in out_meta else {}
+                    if is_indep_var:
+                        if 'openmdao:indep_var' not in src_tags:
                             continue
+                    elif 'openmdao:indep_var' in src_tags:
+                        continue
 
-                    # handle is_design_var
-                    if is_design_var is not None:
-                        if iotype == 'output':
-                            out_name = abs_name
-                        else:
-                            out_name = self.get_source(abs_name)
-                        if is_design_var:
-                            if out_name not in des_vars:
-                                continue
-                        elif out_name in des_vars:
+                # handle is_design_var
+                if is_design_var is not None:
+                    print(f"checking is_design_var {iotype=} {abs_name=}")
+                    if iotype == 'output':
+                        out_name = abs_name
+                    else:
+                        out_name = self._conns[abs_name]
+                    print(f"     {out_name=} in {des_vars=}? {out_name in des_vars}")
+
+                    if is_design_var:
+                        if out_name not in des_vars:
                             continue
+                    elif out_name in des_vars:
+                        continue
 
+                # handle tags
+                if tags:
                     meta_tags = ret_meta.get('tags', {})
+                    match_tag = False
+                    for tag in tags:
+                        for meta_tag in meta_tags:
+                            if fnmatchcase(meta_tag, tag):
+                                match_tag = True
+                                break
+                    if not match_tag:
+                        continue
 
-                    # handle tags
-                    if tags:
-                        match_tag = False
-                        for tag in tags:
-                            for meta_tag in meta_tags:
-                                if fnmatchcase(meta_tag, tag):
-                                    match_tag = True
-                                    break
-                        if not match_tag:
-                            continue
+                ret_meta['io'] = iotype
 
+                ret_meta['discrete'] = 'discrete' in abs2meta[abs_name]
+
+                if prom_name:
                     ret_meta['prom_name'] = prom
 
-                    ret_meta['discrete'] = 'discrete' in abs2meta[abs_name]
-
-                    if return_rel_names:
-                        result[rel_name] = ret_meta
-                    else:
-                        result[abs_name] = ret_meta
+                result[abs_name] = ret_meta
 
         return result
 
@@ -550,7 +554,6 @@ class Case(object):
                   residuals_tol=None,
                   units=False,
                   shape=False,
-                  global_shape=False,
                   bounds=False,
                   scaling=False,
                   desc=False,
@@ -586,8 +589,6 @@ class Case(object):
             When True, display units. Default is False.
         shape : bool, optional
             When True, display/return the shape of the value. Default is False.
-        global_shape : bool, optional
-            When True, display/return the global shape of the value. Default is False.
         bounds : bool, optional
             When True, display/return bounds (lower and upper). Default is False.
         scaling : bool, optional
@@ -643,9 +644,8 @@ class Case(object):
             raise ValueError(f"Invalid value ({badarg}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
-        keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyflags = [val, units, shape, global_shape, desc, tags or print_tags]
-
+        keynames = ['val', 'units', 'shape', 'desc', 'tags']
+        keyflags = [val, units, shape, desc, tags or print_tags]
         keys = [name for i, name in enumerate(keynames) if keyflags[i]]
 
         if bounds:
@@ -653,25 +653,15 @@ class Case(object):
         if scaling:
             keys.extend(('ref', 'ref0', 'res_ref'))
 
-        outputs = self.get_io_metadata(('output',), keys, includes, excludes,
-                                       is_indep_var, is_design_var, tags,
-                                       return_rel_names=False)
-
-        metavalues = val and self.inputs is None
-
-        keyvals = [metavalues, units, shape, global_shape, desc, tags or print_tags]
-        keys = [n for i, n in enumerate(keynames) if keyvals[i]]
-
-        inputs = self.get_io_metadata(('input',), keys, includes, excludes,
-                                      is_indep_var, is_design_var, tags,
-                                      return_rel_names=False)
+        outputs = self.get_io_metadata('output', keys, prom_name, includes, excludes,
+                                       is_indep_var, is_design_var, tags)
 
         # filter auto_ivcs if requested
         if outputs and not list_autoivcs:
             outputs = {n: m for n, m in outputs.items() if not n.startswith('_auto_ivc.')}
 
-        # get values & resids
-        if self.outputs is not None and (val or residuals or residuals_tol):
+        # get output values & resids
+        if outputs and (val or residuals or residuals_tol):
             to_remove = []
             print_options = np.get_printoptions()
             np_precision = print_options['precision']
@@ -699,13 +689,21 @@ class Case(object):
             for name in to_remove:
                 del outputs[name]
 
-        if val and self.inputs is not None:
-            # we want value from the case, not from the metadata
+        if self.inputs is not None:
+            inputs = self.get_io_metadata('input', keys, prom_name, includes, excludes,
+                                          is_indep_var, is_design_var, tags)
+        else:
+            inputs = {}
+
+        # get input values
+        if inputs and val is not None:
             print_options = np.get_printoptions()
             np_precision = print_options['precision']
 
-            for n, meta in inputs.items():
-                meta['val'] = self.inputs[n]
+            for name, meta in inputs.items():
+                # we want value from the case, not from the metadata
+                meta['val'] = self.inputs[name]
+
                 if isinstance(meta['val'], np.ndarray):
                     if print_min:
                         meta['min'] = np.round(np.min(meta['val']), np_precision)
@@ -713,44 +711,20 @@ class Case(object):
                     if print_max:
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
+        # combine inputs and outputs create return value
+        var_dict = outputs
+        var_dict.update(inputs)
+
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
         if not print_tags:
             to_remove.append('tags')
-        if not prom_name:
-            to_remove.append('prom_name')
-        for _, meta in itertools.chain(outputs.items(), inputs.items()):
+        for _, meta in itertools.chain(var_dict.items()):
             for key in to_remove:
                 try:
                     del meta[key]
                 except KeyError:
                     pass
-
-        variables = set(outputs.keys()).union(set(inputs.keys()))
-        var_list = []
-        var_dict = {}
-
-        if self.inputs:
-            for var_name in self.inputs.absolute_names():
-                if var_name in variables:
-                    var_list.append(var_name)
-                    if var_name in outputs:
-                        var_dict[var_name] = outputs[var_name]
-                        var_dict[var_name]['io'] = 'output'
-                    else:
-                        var_dict[var_name] = inputs[var_name]
-                        var_dict[var_name]['io'] = 'input'
-
-        if self.outputs:
-            for var_name in self.outputs.absolute_names():
-                if var_name in variables:
-                    var_list.append(var_name)
-                    if var_name in outputs:
-                        var_dict[var_name] = outputs[var_name]
-                        var_dict[var_name]['io'] = 'output'
-                    else:
-                        var_dict[var_name] = inputs[var_name]
-                        var_dict[var_name]['io'] = 'input'
 
         self._write_table('all', var_dict, True, print_arrays, out_stream)
 
@@ -836,87 +810,30 @@ class Case(object):
             List or dict of input names and other optional information about those inputs.
         """
         if return_format not in ('list', 'dict'):
-            badarg = f"'{return_format}'" if isinstance(return_format, str) else f"{return_format}"
-            raise ValueError(f"Invalid value ({badarg}) for return_format, "
+            raise ValueError(f"Invalid value ({return_format}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
         if not self.inputs:
             return {} if return_format == 'dict' else []
 
-        abs2meta = self._abs2meta
-        inputs = []
+        keynames = ['val', 'units', 'shape', 'desc', 'tags']
+        keyvals = [val, units, shape, desc, tags or print_tags]
+        keys = [n for i, n in enumerate(keynames) if keyvals[i]]
 
-        if isinstance(includes, str):
-            includes = [includes, ]
+        inputs = self.get_io_metadata('input', keys, prom_name, includes, excludes,
+                                      is_indep_var, is_design_var, tags)
 
-        if isinstance(excludes, str):
-            excludes = [excludes, ]
-
-        if self.inputs is not None:
+        if inputs and val:
             print_options = np.get_printoptions()
             np_precision = print_options['precision']
 
-            if is_design_var is not None:
-                des_vars = self._get_variables_of_type('desvar')
-
-            for var_name in self.inputs.absolute_names():
-                meta = abs2meta[var_name]
-
-                # Filter based on tags
-                if tags and not (make_set(tags) & make_set(meta['tags'])):
-                    continue
-
-                var_name_prom = self._abs2prom['input'][var_name]
-
-                if not match_prom_or_abs(var_name, var_name_prom, includes, excludes):
-                    continue
-
-                # handle is_indep_var
-                if is_indep_var is not None:
-                    src_name = self._conns[var_name]
-                    src_name_prom = self._abs2prom['output'][src_name]
-                    src_meta = abs2meta[src_name]
-                    if is_indep_var is True and 'openmdao:indep_var' not in src_meta['tags']:
-                        continue
-                    elif is_indep_var is False and 'openmdao:indep_var' in src_meta['tags']:
-                        continue
-
-                # handle is_design_var
-                if is_design_var is not None:
-                    src_name = self._conns[var_name]
-                    src_name_prom = self._abs2prom['output'][src_name]
-                    if src_name_prom.startswith('_auto_ivc.'):
-                        src_name_prom = self._auto_ivc_map[src_name_prom]
-                    if is_design_var is True and src_name_prom not in des_vars:
-                        continue
-                    elif is_design_var is False and src_name_prom in des_vars:
-                        continue
-
-                var_val = self.inputs[var_name]
-
-                var_meta = {}
-                if val:
-                    var_meta['val'] = var_val
-                    if isinstance(var_val, np.ndarray):
-                        if print_min:
-                            var_meta['min'] = np.round(np.min(var_val), np_precision)
-
-                        if print_max:
-                            var_meta['max'] = np.round(np.max(var_val), np_precision)
-
-                if prom_name:
-                    var_meta['prom_name'] = var_name_prom
-                if units:
-                    var_meta['units'] = meta.get('units', NA)
-                if shape:
-                    try:
-                        var_meta['shape'] = var_val.shape
-                    except AttributeError:
-                        var_meta['shape'] = NA
-                if desc:
-                    var_meta['desc'] = meta['desc']
-
-                inputs.append((var_name, var_meta))
+            for name, meta in inputs.items():
+                meta['val'] = var_val = self.inputs[name]
+                if isinstance(var_val, np.ndarray):
+                    if print_min:
+                        meta['min'] = np.round(np.min(var_val), np_precision)
+                    if print_max:
+                        meta['max'] = np.round(np.max(var_val), np_precision)
 
         if out_stream:
             if self.inputs:
@@ -926,7 +843,7 @@ class Case(object):
                 ostream.write('WARNING: Inputs not recorded. Make sure your recording ' +
                               'settings have record_inputs set to True\n')
 
-        return dict(inputs) if return_format == 'dict' else inputs
+        return inputs if return_format == 'dict' else list(inputs.items())
 
     def list_outputs(self,
                      explicit=True, implicit=True,

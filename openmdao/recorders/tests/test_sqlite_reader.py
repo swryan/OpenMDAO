@@ -1225,6 +1225,7 @@ class TestSqliteCaseReader(unittest.TestCase):
 
         for name, meta in inputs.items():
             expected = expected_inputs_case[name]
+            print(f"{meta['val']=}  {expected['val']=}")
             np.testing.assert_almost_equal(meta['val'], expected['val'])
             self.assertEqual(meta['desc'], expected['desc'])
 
