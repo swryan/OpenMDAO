@@ -511,12 +511,15 @@ class Case(object):
 
                 # handle is_design_var
                 if is_design_var is not None:
-                    print(f"checking is_design_var {iotype=} {abs_name=}")
                     if iotype == 'output':
                         out_name = abs_name
                     else:
-                        out_name = self._conns[abs_name]
-                    print(f"     {out_name=} in {des_vars=}? {out_name in des_vars}")
+                        # input, get connected output
+                        src_name = self._conns[abs_name]
+                        src_name_prom = abs2prom['output'][src_name]
+                        if src_name_prom.startswith('_auto_ivc.'):
+                            src_name_prom = self._auto_ivc_map[src_name_prom]
+                        out_name = src_name_prom
 
                     if is_design_var:
                         if out_name not in des_vars:
