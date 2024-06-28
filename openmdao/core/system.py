@@ -4322,7 +4322,6 @@ class System(object):
                                       rank=None if all_procs or val else 0,
                                       return_rel_names=False)
 
-
         if val and self._inputs is not None:
             # we want value from the input vector, not from the metadata
             print_options = np.get_printoptions()

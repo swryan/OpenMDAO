@@ -989,7 +989,7 @@ class Case(object):
             keys.extend(('ref', 'ref0', 'res_ref'))
 
         outputs = self.get_io_metadata('output', keys, prom_name, includes, excludes,
-                                      is_indep_var, is_design_var, tags)
+                                       is_indep_var, is_design_var, tags)
 
         # filter auto_ivcs if requested
         if outputs and not list_autoivcs:
