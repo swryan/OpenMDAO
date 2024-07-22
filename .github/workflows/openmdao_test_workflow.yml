@@ -232,7 +232,7 @@ jobs:
           fi
 
       - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-latest-large' || matrix.OS == 'macos-latest'
+        if: matrix.OS == 'macos-13' || matrix.OS == 'macos-latest'
         run: |
           if [[ "${{ matrix.BREW }}" ]]; then
             brew install swig gcc meson
