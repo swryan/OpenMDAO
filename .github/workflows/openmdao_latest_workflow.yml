@@ -68,7 +68,7 @@ jobs:
           # test latest versions on macos
           # Include PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy<2
-            OS: macos-latest-large
+            OS: macos-latest
             PY: 3
             NUMPY: '<2'
             PETSc: True
@@ -77,7 +77,7 @@ jobs:
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
-            OS: macos-latest-large
+            OS: macos-latest
             PY: 3
 
     runs-on: ${{ matrix.OS }}

@@ -100,7 +100,7 @@ jobs:
 
           # test baseline versions on MacOS
           - NAME: MacOS Baseline
-            OS: macos-latest-large
+            OS: macos-13
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.13'
