@@ -65,8 +65,7 @@ jobs:
             OS: ubuntu-latest
             PY: 3
 
-          # test latest versions on macos
-          # Include PETSc/pyOptSparse, which require NumPy<2
+          # test latest versions on macos with NumPy<2
           - NAME: MacOS Latest, NumPy<2
             OS: macos-latest
             PY: 3
@@ -75,10 +74,11 @@ jobs:
             PYOPTSPARSE: true
 
           # test latest versions on macos
-          # Exclude PETSc/pyOptSparse, which require NumPy<2
-          - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
+          - NAME: MacOS Latest, NumPy 2
             OS: macos-latest
             PY: 3
+            PETSc: True
+            PYOPTSPARSE: true
 
     runs-on: ${{ matrix.OS }}
 
@@ -242,10 +242,6 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          if [[ "${{ matrix.NUMPY }}" == "" ]]; then
-            sed -i.bak 's/numpy<2/numpy/g' pyproject.toml
-            grep numpy pyproject.toml
-          fi
           python -m pip install .
 
       - name: Display environment info
