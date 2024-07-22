@@ -100,7 +100,7 @@ jobs:
 
           # test baseline versions on MacOS
           - NAME: MacOS Baseline
-            OS: macos-13
+            OS: macos-latest-large
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.13'
@@ -114,14 +114,15 @@ jobs:
 
           # test baseline versions on MacOS/ARM
           - NAME: MacOS ARM
-            OS: macos-14
+            OS: macos-latest
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.13'
+            BREW: true
             PETSc: '3.20'
-            # PYOPTSPARSE: 'v2.11.0'
-            # PAROPT: true
-            # SNOPT: '7.7'
+            PYOPTSPARSE: 'v2.11.0'
+            PAROPT: true
+            SNOPT: '7.7'
             OPTIONAL: '[all]'
             TESTS: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
@@ -231,9 +232,13 @@ jobs:
           fi
 
       - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-13'
+        if: matrix.OS == 'macos-latest-large' || matrix.OS == 'macos-latest'
         run: |
-          conda install swig
+          if [[ "${{ matrix.BREW }}" ]]; then
+            brew install swig gcc meson
+          else
+            conda install swig -q -y
+          fi
 
       - name: Install PETSc
         if: matrix.PETSc
@@ -330,7 +335,7 @@ jobs:
               echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
             fi
 
-            build_pyoptsparse $BRANCH $PAROPT $SNOPT
+            build_pyoptsparse -v $BRANCH $PAROPT $SNOPT
           fi
 
       - name: Install optional dependencies

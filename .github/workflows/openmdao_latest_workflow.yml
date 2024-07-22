@@ -68,7 +68,7 @@ jobs:
           # test latest versions on macos
           # Include PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy<2
-            OS: macos-13
+            OS: macos-latest-large
             PY: 3
             NUMPY: '<2'
             PETSc: True
@@ -77,7 +77,7 @@ jobs:
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
-            OS: macos-13
+            OS: macos-latest-large
             PY: 3
 
     runs-on: ${{ matrix.OS }}
@@ -179,6 +179,7 @@ jobs:
           source .github/scripts/install_latest_deps.sh
 
       - name: Install pyOptSparse
+        id: pyoptsparse
         if: ${{ matrix.PYOPTSPARSE }}
         run: |
           echo "============================================================="
@@ -210,7 +211,31 @@ jobs:
               echo "SNOPT source is not available"
             fi
           fi
-          build_pyoptsparse $BRANCH $SNOPT
+          build_pyoptsparse -v $BRANCH $SNOPT
+
+      - name: Display pyoptsparse build log
+        if: failure() && steps.pyoptsparse.outcome == 'failure'
+        run: |
+          for f in $(find /tmp/ -name 'meson-log.txt'); do
+            echo "============================================================="
+            echo $f
+            echo "============================================================="
+            cat $f
+          done
+          if test -d /private/var/folders; then
+            for f in $(find /private/var/folders/ -name 'meson-log.txt'); do
+              echo "============================================================="
+              echo $f
+              echo "============================================================="
+              cat $f
+            done
+            for f in $(find /private/var/folders/ -name 'compile.log'); do
+              echo "============================================================="
+              echo $f
+              echo "============================================================="
+              cat $f
+            done
+          fi
 
       - name: Install OpenMDAO
         run: |
