@@ -2375,9 +2375,11 @@ class TestPyoptSparse(unittest.TestCase):
         p.model.add_objective('exec.y', index=50)
         p.model.add_constraint('exec.z', indices=[0], equals=25)
 
-        msg = "Constraint 'exec.z' already exists. Use the 'alias' argument to apply a second constraint"
-        with self.assertRaises(RuntimeError) as msg:
+        with self.assertRaises(RuntimeError) as err:
             p.model.add_constraint('exec.z', indices=[-1], lower=20)
+
+        self.assertEqual(str(err),
+                         "Constraint 'exec.z' already exists. Use the 'alias' argument to apply a second constraint")
 
     def test_obj_and_con_same_var_different_indices(self):
 
@@ -2572,7 +2574,6 @@ class TestPyoptSparse(unittest.TestCase):
         prob.setup(force_alloc_complex=True)
         prob.run_model()
 
-        desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
         assert_near_equal(con['a1'], 24.0)
@@ -3254,7 +3255,6 @@ class TestPyoptSparseSnoptFeature(unittest.TestCase):
         import signal
 
         prob = om.Problem()
-        model = prob.model
 
         prob.driver = om.pyOptSparseDriver()
         prob.driver.options['optimizer'] = "SNOPT"
