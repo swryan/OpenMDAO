@@ -177,9 +177,11 @@ include = [
     "/openmdao",
 ]
 
+[tool.ruff]
+line-length = 100
+
 [tool.ruff.format]
 line-ending = "lf"
-line-length = 100
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"
