@@ -16,7 +16,7 @@ from openmdao.test_suite.components.paraboloid_problem import ParaboloidProblem
 from openmdao.test_suite.components.paraboloid_distributed import DistParab
 from openmdao.test_suite.components.sellar import SellarDerivativesGrouped
 from openmdao.utils.assert_utils import assert_near_equal, assert_warning, assert_check_totals
-from openmdao.utils.general_utils import set_pyoptsparse_opt, run_driver 
+from openmdao.utils.general_utils import set_pyoptsparse_opt, run_driver
 from openmdao.utils.testing_utils import use_tempdirs, require_pyoptsparse
 from openmdao.utils.om_warnings import OMDeprecationWarning
 from openmdao.utils.mpi import MPI
@@ -2375,11 +2375,12 @@ class TestPyoptSparse(unittest.TestCase):
         p.model.add_objective('exec.y', index=50)
         p.model.add_constraint('exec.z', indices=[0], equals=25)
 
-        with self.assertRaises(RuntimeError) as err:
+        with self.assertRaises(RuntimeError) as ctx:
             p.model.add_constraint('exec.z', indices=[-1], lower=20)
 
-        self.assertEqual(str(err),
-                         "Constraint 'exec.z' already exists. Use the 'alias' argument to apply a second constraint")
+        self.assertEqual(str(ctx.exception),
+                         "<class Group>: Constraint 'exec.z' already exists. "
+                         "Use the 'alias' argument to apply a second constraint")
 
     def test_obj_and_con_same_var_different_indices(self):
 
