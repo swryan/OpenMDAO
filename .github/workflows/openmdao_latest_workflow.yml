@@ -153,7 +153,7 @@ jobs:
               ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
             fi
           else
-            conda install compilers cython swig -q -y
+            conda install compilers cython swig openmpi-mpicc mpi4py -q -y
           fi
 
       - name: Install PETSc
@@ -162,7 +162,7 @@ jobs:
           echo "============================================================="
           echo "Install latest PETSc"
           echo "============================================================="
-          conda install mpi4py petsc petsc4py -q -y
+          python -m pip install petsc petsc4py
 
           echo "============================================================="
           echo "Check MPI and PETSc installation"
