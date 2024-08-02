@@ -152,10 +152,10 @@ jobs:
           echo "============================================================="
           echo "Install latest PETSc"
           echo "============================================================="
-          if [[ "${{ matrix.NUMPY }}" == "" ]]; then
-            conda install mpich mpi4py=3 petsc4py -q -y
+          if [[ "${{ matrix.NUMPY }}" == "<2" ]]; then
+            conda install mpich mpi4py=3 petsc4py=3.21.3 -q -y
           else
-            conda install mpich mpi4py=3 petsc4py=3.21.2 -q -y
+            conda install mpich mpi4py=3 petsc4py -q -y
           fi
 
 
