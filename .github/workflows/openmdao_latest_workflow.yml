@@ -71,7 +71,6 @@ jobs:
             OS: macos-latest
             PY: 3
             NUMPY: '<2'
-            BREW: true
             PETSc: True
             PYOPTSPARSE: true
 
@@ -80,7 +79,6 @@ jobs:
           - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
             OS: macos-latest
             PY: 3
-            BREW: true
 
     runs-on: ${{ matrix.OS }}
 
