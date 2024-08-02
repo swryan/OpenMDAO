@@ -68,18 +68,16 @@ jobs:
           # test latest versions on macos
           # Include PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy<2
-            OS: macos-latest
+            OS: macos-13
             PY: 3
             NUMPY: '<2'
-            BREW: true
             PETSc: True
             PYOPTSPARSE: true
-            SNOPT: true
 
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
-            OS: macos-latest
+            OS: macos-13
             PY: 3
 
     runs-on: ${{ matrix.OS }}
@@ -129,6 +127,11 @@ jobs:
           conda-version: "*"
           channels: conda-forge
 
+      - name: Install MacOS-specific dependencies
+        if: matrix.OS == 'macos-13'
+        run: |
+          conda install compilers swig
+
       - name: Install NumPy/SciPy
         run: |
           echo "============================================================="
@@ -143,26 +146,13 @@ jobs:
           echo "NUMPY_VER=$NUMPY_VER" >> $GITHUB_ENV
           echo "SCIPY_VER=$SCIPY_VER" >> $GITHUB_ENV
 
-
-      - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-latest'
-        run: |
-          if [[ "${{ matrix.BREW }}" ]]; then
-            brew install swig meson open-mpi mpi4py
-            if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
-              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
-            fi
-          else
-            conda install compilers cython swig openmpi-mpicc mpi4py -q -y
-          fi
-
       - name: Install PETSc
         if: ${{ matrix.PETSC }}
         run: |
           echo "============================================================="
           echo "Install latest PETSc"
           echo "============================================================="
-          python -m pip install petsc petsc4py
+          conda install mpich mpi4py petsc!=3.21.1 petsc4py -q -y
 
           echo "============================================================="
           echo "Check MPI and PETSc installation"
