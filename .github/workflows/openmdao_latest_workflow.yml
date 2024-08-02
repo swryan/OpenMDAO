@@ -71,8 +71,10 @@ jobs:
             OS: macos-latest
             PY: 3
             NUMPY: '<2'
+            BREW: true
             PETSc: True
             PYOPTSPARSE: true
+            SNOPT: true
 
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
@@ -127,18 +129,6 @@ jobs:
           conda-version: "*"
           channels: conda-forge
 
-      - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-latest'
-        run: |
-          if [[ "${{ matrix.BREW }}" ]]; then
-            brew install swig meson
-            if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
-              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
-            fi
-          else
-            conda install compilers cython swig -q -y
-          fi
-
       - name: Install NumPy/SciPy
         run: |
           echo "============================================================="
@@ -153,13 +143,26 @@ jobs:
           echo "NUMPY_VER=$NUMPY_VER" >> $GITHUB_ENV
           echo "SCIPY_VER=$SCIPY_VER" >> $GITHUB_ENV
 
+
+      - name: Install MacOS-specific dependencies
+        if: matrix.OS == 'macos-latest'
+        run: |
+          if [[ "${{ matrix.BREW }}" ]]; then
+            brew install swig meson open-mpi mpi4py
+            if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
+              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+            fi
+          else
+            conda install compilers cython swig -q -y
+          fi
+
       - name: Install PETSc
         if: ${{ matrix.PETSC }}
         run: |
           echo "============================================================="
           echo "Install latest PETSc"
           echo "============================================================="
-          conda install mpi4py petsc!=3.21.1 petsc4py -q -y
+          conda install mpi4py petsc petsc4py -q -y
 
           echo "============================================================="
           echo "Check MPI and PETSc installation"
