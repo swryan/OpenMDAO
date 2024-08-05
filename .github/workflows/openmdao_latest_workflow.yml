@@ -132,10 +132,10 @@ jobs:
       - name: Install Brew compilers
         if: matrix.BREW
         run: |
-        brew install swig meson
-        if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
-          ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
-        fi
+          brew install swig meson
+          if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
+            ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+          fi
 
       - name: Install NumPy/SciPy
         run: |
