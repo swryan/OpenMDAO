@@ -76,7 +76,7 @@ jobs:
 
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
-          - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
+          - NAME: MacOS Latest, NumPy 2 (No PETSc)
             OS: macos-latest
             PY: 3
             BREW: true
@@ -129,12 +129,16 @@ jobs:
           conda-version: "*"
           channels: conda-forge
 
-      - name: Install Brew compilers
-        if: ${{ matrix.BREW }}
+      - name: Install compilers for MacOS
+        if: matrix.OS == 'macos-latest'
         run: |
-          brew install swig meson
-          if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
-            ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+          if [[ "${{ matrix.BREW }}" ]]; then
+            brew install swig meson
+            if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
+              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+            fi
+          else
+            conda install compilers cython swig -q -y
           fi
 
       - name: Install NumPy/SciPy
