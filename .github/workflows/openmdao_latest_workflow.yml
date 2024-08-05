@@ -68,7 +68,7 @@ jobs:
           # test latest versions on macos
           # Include PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy<2
-            OS: macos-13
+            OS: macos-latest
             PY: 3
             NUMPY: '<2'
             PETSc: true
@@ -77,8 +77,10 @@ jobs:
           # test latest versions on macos
           # Exclude PETSc/pyOptSparse, which require NumPy<2
           - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
-            OS: macos-13
+            OS: macos-latest
             PY: 3
+            BREW: true
+            PYOPTSPARSE: true
 
     runs-on: ${{ matrix.OS }}
 
@@ -127,10 +129,13 @@ jobs:
           conda-version: "*"
           channels: conda-forge
 
-      - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-13'
+      - name: Install Brew compilers
+        if: matrix.BREW
         run: |
-          conda install compilers swig
+        brew install swig meson
+        if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
+          ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+        fi
 
       - name: Install NumPy/SciPy
         run: |
@@ -157,7 +162,6 @@ jobs:
           else
             conda install mpich mpi4py petsc4py -q -y
           fi
-
 
           echo "============================================================="
           echo "Check MPI and PETSc installation"
