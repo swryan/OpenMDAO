@@ -130,7 +130,7 @@ jobs:
           channels: conda-forge
 
       - name: Install Brew compilers
-        if: matrix.BREW
+        if: ${{ matrix.BREW }}
         run: |
           brew install swig meson
           if [[ "${{ matrix.OS }}" == "macos-latest" ]]; then
