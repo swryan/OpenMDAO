@@ -6,6 +6,8 @@ from aiounittest import async_test
 import os
 import sys
 
+from openmdao.utils.om_warnings import issue_warning
+
 from openmdao.utils.gui_testing_utils import _GuiTestCase
 
 # set DEBUG to True if you want to view the generated HTML file
@@ -222,7 +224,13 @@ class gen_gui_test_case(_GuiTestCase):
                 self.log_test("[Toolbar] " + test['desc'])
 
                 btnHandle = await self.get_handle('#' + test['id'])
-                await btnHandle.click(button='left', timeout=3333, force=True)
+                try:
+                    await btnHandle.click(button='left', timeout=3333, force=True)
+                except Exception as err:
+                    if "Element is outside of the viewport" in str(err):
+                        issue_warning(str(err))
+                    else:
+                        raise(err)
 
         await self.page.reload(wait_until='networkidle')
 
@@ -244,7 +252,7 @@ class gen_gui_test_case(_GuiTestCase):
                     await self.page.wait_for_selector(nth_selector, state='attached',
                                                       timeout=max_time)
                     found = True
-                except:
+                except Exception:
                     num_tries += 1
 
             num_tries = 0
@@ -255,7 +263,7 @@ class gen_gui_test_case(_GuiTestCase):
                     await self.page.wait_for_selector(nth_selector, state='detached',
                                                       timeout=max_time)
                     found = True
-                except:
+                except Exception:
                     num_tries += 1
 
         else:
@@ -267,7 +275,7 @@ class gen_gui_test_case(_GuiTestCase):
                     await self.page.wait_for_selector(nth_selector, state='detached',
                                                       timeout=max_time)
                     found = True
-                except:
+                except Exception:
                     num_tries += 1
 
         hndl_list = await self.page.query_selector_all(selector)

@@ -3,12 +3,39 @@ name: OpenMDAO Latest
 
 on:
 
-  # Run the workflow Monday, Wednesday and Friday at 0400 UTC
+  # Run the workflow every Monday and Thursday at 0400 UTC
   schedule:
-    - cron: '0 4 * * 1,3,5'
+    - cron: '0 4 * * 1,4'
 
   # Allow running the workflow manually from the Actions tab
   workflow_dispatch:
+
+   inputs:
+      run_name:
+        description: 'Name of workflow run as it will appear under Actions tab (optional):'
+        type: string
+        required: false
+        default: ''
+      job_name:
+        description: 'Select a job from the matrix to run (default: all jobs)'
+        type: choice
+        options:
+          - ''
+          - 'Ubuntu Latest, NumPy<2'
+          - 'Ubuntu Latest, NumPy 2 (No PETSc/pyOptSparse)'
+          - 'MacOS Latest, NumPy<2'
+          - 'MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)'
+        required: false
+        default: ''
+      debug_enabled:
+        description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
+        type: boolean
+        required: false
+        default: false
+
+run-name:  ${{ inputs.run_name }}
+
+permissions: {}
 
 jobs:
 
@@ -21,11 +48,37 @@ jobs:
       matrix:
         include:
           # test latest versions on ubuntu
-          - NAME: Ubuntu Latest
+          # Include PETSc/pyOptSparse, which require NumPy<2
+          - NAME: Ubuntu Latest, NumPy<2
             OS: ubuntu-latest
             PY: 3
-            PETSc: 3
-            SNOPT: 7.7
+            NUMPY: '<2'
+            PETSc: true
+            PYOPTSPARSE: true
+            SNOPT: true
+            BANDIT: true
+            BUILD_DOCS: true
+
+          # test latest versions on ubuntu
+          # Exclude PETSc/pyOptSparse, which require NumPy<2
+          - NAME: Ubuntu Latest, NumPy 2 (No PETSc/pyOptSparse)
+            OS: ubuntu-latest
+            PY: 3
+
+          # test latest versions on macos
+          # Include PETSc/pyOptSparse, which require NumPy<2
+          - NAME: MacOS Latest, NumPy<2
+            OS: macos-13
+            PY: 3
+            NUMPY: '<2'
+            PETSc: true
+            PYOPTSPARSE: true
+
+          # test latest versions on macos
+          # Exclude PETSc/pyOptSparse, which require NumPy<2
+          - NAME: MacOS Latest, NumPy 2 (No PETSc/pyOptSparse)
+            OS: macos-13
+            PY: 3
 
     runs-on: ${{ matrix.OS }}
 
@@ -47,6 +100,12 @@ jobs:
           echo "Initiated by: ${GITHUB_ACTOR}"
           echo "============================================================="
 
+      - name: Exit if this job was not selected
+        if: github.event_name == 'workflow_dispatch' &&  inputs.job_name != '' &&  inputs.job_name != matrix.NAME
+        uses: actions/github-script@v7
+        with:
+          script: core.setFailed('The ${{ matrix.NAME }} job was not included in the run, exiting...');
+
       - name: Create SSH key
         if: (matrix.SNOPT || matrix.BUILD_DOCS)
         env:
@@ -62,20 +121,69 @@ jobs:
         uses: actions/checkout@v3
 
       - name: Setup conda
-        uses: conda-incubator/setup-miniconda@v2
+        uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: ${{ matrix.PY }}
-          conda-version: "*"
-          channels: conda-forge
-          channel-priority: true
+          miniforge-version: latest
 
-      - name: Install OpenMDAO
+      - name: Install MacOS-specific dependencies
+        if: matrix.OS == 'macos-13'
+        run: |
+          conda install compilers swig
+
+      - name: Install NumPy/SciPy
         run: |
           echo "============================================================="
-          echo "Upgrade conda environment to latest"
+          echo "Install latest versions of NumPy/SciPy"
           echo "============================================================="
-          conda upgrade -c conda-forge --all
+          python -m pip install --upgrade --pre "numpy${{ matrix.NUMPY }}"
+          python -m pip install --upgrade --pre scipy
 
+          # remember versions so we can check them later
+          NUMPY_VER=`python -c "import numpy; print(numpy.__version__)"`
+          SCIPY_VER=`python -c "import scipy; print(scipy.__version__)"`
+          echo "NUMPY_VER=$NUMPY_VER" >> $GITHUB_ENV
+          echo "SCIPY_VER=$SCIPY_VER" >> $GITHUB_ENV
+
+      - name: Install PETSc
+        if: ${{ matrix.PETSC }}
+        run: |
+          echo "============================================================="
+          echo "Install latest PETSc"
+          echo "============================================================="
+          if [[ "${{ matrix.NUMPY }}" == "<2" ]]; then
+            conda install mpich mpi4py petsc4py=3.21.2 -q -y
+          else
+            conda install mpich mpi4py petsc4py -q -y
+          fi
+
+          echo "============================================================="
+          echo "Check MPI and PETSc installation"
+          echo "============================================================="
+          export OMPI_MCA_rmaps_base_oversubscribe=1
+          export OMPI_MCA_btl=^openib
+
+          echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
+          echo "OMPI_MCA_btl=^openib" >> $GITHUB_ENV
+
+          echo "-----------------------"
+          echo "Quick test of mpi4py:"
+          mpirun -n 3 python -c "from mpi4py import MPI; print(f'Rank: {MPI.COMM_WORLD.rank}')"
+          echo "-----------------------"
+          echo "Quick test of petsc4py:"
+          mpirun -n 3 python -c "import numpy; from mpi4py import MPI; comm = MPI.COMM_WORLD; \
+                              import petsc4py; petsc4py.init(); \
+                              x = petsc4py.PETSc.Vec().createWithArray(numpy.ones(5)*comm.rank, comm=comm);  \
+                              print(x.getArray())"
+          echo "-----------------------"
+
+      - name: Install latest versions of [all] openmdao dependencies
+        run: |
+          source .github/scripts/install_latest_deps.sh
+
+      - name: Install pyOptSparse
+        if: ${{ matrix.PYOPTSPARSE }}
+        run: |
           echo "============================================================="
           echo "Define useful functions"
           echo "============================================================="
@@ -91,127 +199,36 @@ jobs:
           }
 
           echo "============================================================="
-          echo "Upgrade to latest pip"
-          echo "============================================================="
-          python -m pip install --upgrade pip
-
-          echo "============================================================="
-          echo "Install latest setuptools"
-          echo "============================================================="
-          python -m pip install --upgrade --pre setuptools
-
-          echo "============================================================="
-          echo "Install latest versions of NumPy/SciPy"
-          echo "============================================================="
-          python -m pip install --upgrade --pre numpy
-          python -m pip install --upgrade --pre scipy
-
-          # remember versions so we can check them later
-          NUMPY_VER=`python -c "import numpy; print(numpy.__version__)"`
-          SCIPY_VER=`python -c "import scipy; print(scipy.__version__)"`
-          echo "NUMPY_VER=$NUMPY_VER" >> $GITHUB_ENV
-          echo "SCIPY_VER=$SCIPY_VER" >> $GITHUB_ENV
-
-          echo "============================================================="
-          echo "Install latest versions of 'docs' dependencies"
-          echo "============================================================="
-          python -m pip install --upgrade --pre matplotlib
-          python -m pip install --upgrade --pre numpydoc
-          python -m pip install --upgrade --pre jupyter-book
-          python -m pip install --upgrade --pre sphinx-sitemap
-          python -m pip install --upgrade --pre ipyparallel
-
-          echo "============================================================="
-          echo "Install latest versions of 'doe' dependencies"
-          echo "============================================================="
-          python -m pip install --upgrade --pre pyDOE3
-
-          echo "============================================================="
-          echo "Install latest versions of 'notebooks' dependencies"
-          echo "============================================================="
-          python -m pip install --upgrade --pre notebook
-          python -m pip install --upgrade --pre ipympl
-
-          echo "============================================================="
-          echo "Install latest versions of 'visualization' dependencies"
-          echo "============================================================="
-          python -m pip install --upgrade --pre bokeh
-          python -m pip install --upgrade --pre colorama
-
-          echo "============================================================="
-          echo "Install latest versions of 'test' dependencies"
-          echo "============================================================="
-          python -m pip install --upgrade --pre parameterized
-          python -m pip install --upgrade --pre numpydoc
-          python -m pip install --upgrade --pre pycodestyle
-          python -m pip install --upgrade --pre pydocstyle
-          python -m pip install --upgrade --pre testflo
-          python -m pip install --upgrade --pre websockets
-          python -m pip install --upgrade --pre aiounittest
-          echo "the latest version of playwright (1.38.0) is pinned to"
-          echo "greenlet 2.0.2 which does not build properly for python 3.12"
-          echo "https://github.com/microsoft/playwright-python/issues/2096"
-          python -m pip install --upgrade --pre playwright  || echo "Skipping playwright, no GUI testing!"
-          python -m pip install --upgrade --pre num2words
-
-          echo "============================================================="
-          echo "Install latest versions of other optional packages"
-          echo "============================================================="
-          python -m pip install --upgrade --pre pyparsing psutil objgraph pyxdsm
-          python -m pip install --upgrade --pre jax jaxlib
-
-          echo "============================================================="
           echo "Install latest pyoptsparse"
           echo "============================================================="
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
-          if [[ "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
+          if [[ "${{ matrix.SNOPT }}" ]]; then
+            if [[ "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
               echo "  > Secure copying SNOPT 7.7 over SSH"
               mkdir SNOPT
               scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
               SNOPT="-s SNOPT/src"
-          else
+            else
               echo "SNOPT source is not available"
+            fi
           fi
           build_pyoptsparse $BRANCH $SNOPT
 
+      - name: Install OpenMDAO
+        run: |
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
+          if [[ "${{ matrix.NUMPY }}" == "" ]]; then
+            sed -i.bak 's/numpy<2/numpy/g' pyproject.toml
+            grep numpy pyproject.toml
+          fi
           python -m pip install .
-
-      - name: Install PETSc
-        if: matrix.PETSc
-        run: |
-          echo "============================================================="
-          echo "Install latest PETSc"
-          echo "============================================================="
-          conda install mpi4py petsc petsc4py -q -y --freeze-installed
-
-          echo "============================================================="
-          echo "Check MPI and PETSc installation"
-          echo "============================================================="
-          export OMPI_MCA_rmaps_base_oversubscribe=1
-          echo "-----------------------"
-          echo "Quick test of mpi4py:"
-          mpirun -n 3 python -c "from mpi4py import MPI; print(f'Rank: {MPI.COMM_WORLD.rank}')"
-          echo "-----------------------"
-          echo "Quick test of petsc4py:"
-          mpirun -n 3 python -c "import numpy; from mpi4py import MPI; comm = MPI.COMM_WORLD; \
-                                 import petsc4py; petsc4py.init(); \
-                                 x = petsc4py.PETSc.Vec().createWithArray(numpy.ones(5)*comm.rank, comm=comm);  \
-                                 print(x.getArray())"
-          echo "-----------------------"
-
-          echo "============================================================="
-          echo "Export MPI-related environment variables"
-          echo "============================================================="
-          echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
-          echo "Workaround for intermittent failures with OMPI https://github.com/open-mpi/ompi/issues/7393"
-          echo "TMPDIR=/tmp" >> $GITHUB_ENV
 
       - name: Display environment info
         id: env_info
+        if: always()
         continue-on-error: true
         run: |
           conda info
@@ -239,9 +256,22 @@ jobs:
 
           echo 'EOF' >> $GITHUB_OUTPUT
 
-          grep changed $GITHUB_OUTPUT
+          grep changed $GITHUB_OUTPUT || echo ""
 
-        if: always()
+      # Enable tmate debugging of manually-triggered workflows if the input option was provided
+      #
+      # To access the terminal through the web-interface:
+      #    1. Click on the web-browser link printed out in this action from the github
+      #       workflow terminal
+      #    2. Press cntrl + c in the new tab that opens up to reveal the terminal
+      #    3. To activate the conda environment run:
+      #        $ source $CONDA/etc/profile.d/conda.sh
+      #        $ conda activate test
+      - name: Setup tmate session
+        uses: mxschmitt/action-tmate@v3
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.debug_enabled }}
+        with:
+          limit-access-to-actor: true
 
       - name: Run tests
         id: run_tests
@@ -257,6 +287,7 @@ jobs:
 
       - name: Build docs
         id: build_docs
+        if: matrix.BUILD_DOCS
         continue-on-error: true
         run: |
           export OPENMDAO_REPORTS=0
@@ -316,6 +347,38 @@ jobs:
 
           grep '^0 unique deprecation warnings' $RPT_FILE
 
+      - name: Scan for security issues
+        if: matrix.BANDIT
+        id: bandit
+        continue-on-error: true
+        run: |
+          python -m pip install bandit
+          echo "============================================================="
+          echo "Run bandit scan for high/medium severity issues"
+          echo "============================================================="
+          cd ${{ github.workspace }}
+          python -m bandit -c bandit.yml -ll -r openmdao
+
+      - name: Slack security issue
+        if: steps.bandit.outcome == 'failure'
+        uses: act10ns/slack@v2.0.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: 'warning'
+          message:
+            Security issue found on `${{ matrix.NAME }}` build.
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Check NumPy 2.0 Compatibility
+        run: |
+          echo "============================================================="
+          echo "Check OpenMDAO code for NumPy 2.0 compatibility"
+          echo "See: https://numpy.org/devdocs/numpy_2_0_migration_guide.html"
+          echo "============================================================="
+          python -m pip install ruff
+          cd ${{ github.workspace }}
+          ruff check . --select NPY201
+
       - name: Slack env change
         if: steps.env_info.outputs.errors != ''
         uses: act10ns/slack@v2.0.0
@@ -323,7 +386,7 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           status: 'warning'
           message: |
-            Environment change detected on `Latest` build.
+            Environment change detected on `${{ matrix.NAME }}` build.
             Python, NumPy or SciPy was not the requested version:
             ```${{steps.env_info.outputs.errors}}```
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
@@ -335,7 +398,7 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           status: ${{ steps.run_tests.outcome }}
           message:
-            Unit testing failed on `Latest` build.
+            Unit testing failed on `${{ matrix.NAME }}` build.
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Slack doc build failure
@@ -345,7 +408,7 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           status: ${{ steps.build_docs.outcome }}
           message: |
-            Doc build failed on `Latest` build.
+            Doc build failed on `${{ matrix.NAME }}` build.
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Slack deprecation warnings
@@ -355,6 +418,23 @@ jobs:
           webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
           status: 'warning'
           message: |
-            Deprecations were detected on `Latest` build.
+            Deprecations were detected on `${{ matrix.NAME }}` build.
             ```${{ steps.deprecations_report.outputs.summary }}```
             ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+
+      - name: Fail the workflow if tests or doc build failed
+        if: steps.run_tests.outcome == 'failure' || steps.build_docs.outcome == 'failure'
+        uses: actions/github-script@v3
+        with:
+          script: |
+              let test_fail = ${{ steps.run_tests.outcome == 'failure' }};
+              let docs_fail = ${{ steps.build_docs.outcome == 'failure' }};
+              if (test_fail && docs_fail) {
+                  core.setFailed('Tests and doc build failed.');
+              }
+              else if (test_fail) {
+                  core.setFailed('Tests failed.');
+              }
+              else if (docs_fail) {
+                  core.setFailed('Doc build failed.');
+              }

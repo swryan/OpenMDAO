@@ -2,18 +2,17 @@
 
 
 import sys
-import pathlib
 from io import StringIO
 
 import numpy as np
 from contextlib import contextmanager
 from collections import Counter
 
-from openmdao.core.constants import _SetupStatus
+from openmdao.core.constants import _SetupStatus, _DEFAULT_OUT_STREAM
 from openmdao.utils.mpi import MPI
-from openmdao.utils.om_warnings import issue_warning, MPIWarning
 from openmdao.utils.reports_system import register_report
-from openmdao.utils.file_utils import text2html
+from openmdao.utils.file_utils import text2html, _load_and_exec
+from openmdao.utils.rangemapper import RangeMapper
 from openmdao.visualization.tables.table_builder import generate_table
 
 
@@ -120,7 +119,6 @@ def tree(top, show_solvers=True, show_jacs=True, show_colors=True, show_approx=T
         indent = '    ' * (depth + tab)
         cprint(indent, end='')
 
-        info = ''
         if isinstance(s, Group):
             cprint("%s " % type(s).__name__, color=Fore.GREEN + Style.BRIGHT)
             cprint("%s" % s.name)
@@ -358,7 +356,7 @@ def config_summary(problem, stream=sys.stdout):
 
 
 def _summary_report(prob):
-    path = str(pathlib.Path(prob.get_reports_dir()).joinpath('summary.html'))
+    path = prob.get_reports_dir() / 'summary.html'
     s = StringIO()
     config_summary(prob, s)
     with open(path, 'w') as f:
@@ -423,9 +421,11 @@ def compare_jacs(Jref, J, rel_trigger=1.0):
     return results
 
 
-def trace_mpi(fname='mpi_trace', skip=(), flush=True):
+def trace_dump(fname='trace_dump', skip=(), flush=True):
     """
-    Dump traces to the specified filename<.rank> showing openmdao and mpi/petsc calls.
+    Dump traces to the specified filename<.rank> showing openmdao and c calls.
+
+    Under MPI it will write a separate file for each rank.
 
     Parameters
     ----------
@@ -436,13 +436,11 @@ def trace_mpi(fname='mpi_trace', skip=(), flush=True):
     flush : bool
         If True, flush print buffer after every print call.
     """
-    if MPI is None:
-        issue_warning("MPI is not active.  Trace aborted.", category=MPIWarning)
-        return
     if sys.getprofile() is not None:
         raise RuntimeError("another profile function is already active.")
 
-    my_fname = fname + '.' + str(MPI.COMM_WORLD.rank)
+    suffix = '.0' if MPI is None else '.' + str(MPI.COMM_WORLD.rank)
+    my_fname = fname + suffix
 
     outfile = open(my_fname, 'w')
 
@@ -459,10 +457,13 @@ def trace_mpi(fname='mpi_trace', skip=(), flush=True):
         s = str(arg)
         if 'mpi4py' in s or 'petsc4py' in s:
             c = arg.__self__.__class__
-            print('   ' * len(stack), typestr, "%s.%s.%s" %
-                    (c.__module__, c.__name__, arg.__name__),
-                    "%s:%d" % (frame.f_code.co_filename, frame.f_code.co_firstlineno),
-                    file=outfile, flush=True)
+            if stack:
+                pname = f"(scope: {stack[-1][0]})"
+            else:
+                pname = ''
+            print('   ' * len(stack), typestr, f"{c.__module__}.{c.__name__}.{arg.__name__}",
+                  f"{frame.f_code.co_filename}:{frame.f_code.co_firstlineno} {pname}",
+                  file=outfile, flush=True)
 
 
     def _mpi_trace_callback(frame, event, arg):
@@ -475,16 +476,16 @@ def trace_mpi(fname='mpi_trace', skip=(), flush=True):
                 if 'self' in frame.f_locals:
                     try:
                         pname = frame.f_locals['self'].msginfo
-                    except:
+                    except Exception:
                         pass
                     try:
                         commsize = frame.f_locals['self'].comm.size
-                    except:
+                    except Exception:
                         pass
                 if pname is not None:
                     if not stack or pname != stack[-1][0]:
                         stack.append([pname, 1])
-                        print('   ' * len(stack), commsize, pname, file=outfile, flush=flush)
+                        print('   ' * len(stack), commsize, f"(scope: {pname})", file=outfile, flush=flush)
                     else:
                         stack[-1][1] += 1
                 print('   ' * len(stack), '-->', frame.f_code.co_name, "%s:%d" %
@@ -497,11 +498,11 @@ def trace_mpi(fname='mpi_trace', skip=(), flush=True):
                 if 'self' in frame.f_locals:
                     try:
                         pname = frame.f_locals['self'].msginfo
-                    except:
+                    except Exception:
                         pass
                     try:
                         commsize = frame.f_locals['self'].comm.size
-                    except:
+                    except Exception:
                         pass
                 print('   ' * len(stack), '<--', frame.f_code.co_name, "%s:%d" %
                       (frame.f_code.co_filename, frame.f_code.co_firstlineno),
@@ -636,3 +637,261 @@ def comm_info(system, outfile=None, verbose=False, table_format='box_grid'):
         else:
             with open(outfile, 'w') as f:
                 print("No MPI process info available.", file=f)
+
+
+def is_full_slice(range, inds):
+    size = range[1] - range[0]
+    inds = np.asarray(inds)
+    if len(inds) > 1 and inds[0] == 0 and inds[-1] == size - 1:
+        step = inds[1] - inds[0]
+        diffs = inds[1:] - inds[:-1]
+        return np.all(diffs == step)
+
+    return len(inds) == 1 and inds[0] == 0
+
+
+def show_dist_var_conns(group, rev=False, out_stream=_DEFAULT_OUT_STREAM):
+    """
+    Show all distributed variable connections in the given group and below.
+
+    The ranks displayed will be relative to the communicator of the given top group.
+
+    Parameters
+    ----------
+    group : Group
+        The top level group to be searched.  Connections in all subgroups will also be displayed.
+    rev : bool
+        If True show reverse transfers instead of forward transfers.
+    out_stream : file-like
+        Where the output will go.
+
+    Returns
+    -------
+    dict or None
+        Dictionary containing the data for the connections. None is returned on all ranks except
+        rank 0.
+    """
+    from openmdao.core.group import Group
+
+    if out_stream is _DEFAULT_OUT_STREAM:
+        out_stream = sys.stdout
+
+    if out_stream is None:
+        def printer(*args, **kwargs):
+            return None
+    else:
+        printer = print
+
+    direction = 'rev' if rev else 'fwd'
+    arrowdir = {'fwd': '->', 'rev': '<-'}
+    arrow = arrowdir[direction]
+
+    gdict = {}
+
+    for g in group.system_iter(typ=Group, include_self=True):
+        if g._transfers[direction]:
+            in_ranges = list(g.dist_size_iter('input', group.comm))
+            out_ranges = list(g.dist_size_iter('output', group.comm))
+
+            inmapper = RangeMapper.create(in_ranges)
+            outmapper = RangeMapper.create(out_ranges)
+
+            gprint = False
+
+            gprefix = g.pathname + '.' if g.pathname else ''
+            skip = len(gprefix)
+
+            for sub, transfer in g._transfers[direction].items():
+                if sub is not None and (not isinstance(sub, tuple) or sub[0] is not None):
+                    if not gprint:
+                        gdict[g.pathname] = {}
+                        gprint = True
+
+                    conns = {}
+                    for iidx, oidx in zip(transfer._in_inds, transfer._out_inds):
+                        idata, irind = inmapper.index2key_rel(iidx)
+                        ivar, irank = idata
+                        odata, orind = outmapper.index2key_rel(oidx)
+                        ovar, orank = odata
+
+                        if odata not in conns:
+                            conns[odata] = {}
+                        if idata not in conns[odata]:
+                            conns[odata][idata] = []
+                        conns[odata][idata].append((orind, irind))
+
+                    strs = {}  # use to avoid duplicate printouts for different ranks
+
+                    for odata, odict in conns.items():
+                        ovar, orank = odata
+                        ovar = ovar[skip:]
+
+                        for idata, dlist in odict.items():
+                            ivar, irank = idata
+                            ivar = ivar[skip:]
+                            ranktup = (orank, irank)
+
+                            oinds = [d[0] for d in dlist]
+                            iinds = [d[1] for d in dlist]
+
+                            orange = outmapper.key2range(odata)
+                            irange = inmapper.key2range(idata)
+
+                            if is_full_slice(orange, oinds) and is_full_slice(irange, iinds):
+                                s = f"{ovar} {arrow} {ivar}"
+                                if s not in strs:
+                                    strs[s] = set()
+                                strs[s].add(ranktup)
+                                continue
+
+                            for oidx, iidx in zip(oinds, iinds):
+                                s = f"{ovar}[{oidx}] {arrow} {ivar}[{iidx}]"
+                                if s not in strs:
+                                    strs[s] = set()
+                                strs[s].add(ranktup)
+
+                    gdict[g.pathname][str(sub)] = strs
+
+    do_ranks = False
+
+    if group.comm.size > 1:
+        do_ranks = True
+        final = {}
+        gatherlist = group.comm.gather(gdict, root=0)
+        if group.comm.rank == 0:
+            for dct in gatherlist:
+                for gpath, subdct in dct.items():
+                    if gpath not in final:
+                        final[gpath] = subdct
+                    else:
+                        fgpath = final[gpath]
+                        for sub, strs in subdct.items():
+                            if sub not in fgpath:
+                                fgpath[sub] = strs
+                            else:
+                                fgpathsub = fgpath[sub]
+                                for s, ranks in strs.items():
+                                    if s not in fgpathsub:
+                                        fgpathsub[s] = ranks
+                                    else:
+                                        fgpathsub[s] |= ranks
+
+        gdict = final
+
+    if group.comm.rank == 0:
+        fwd = direction == 'fwd'
+        for gpath, subdct in sorted(gdict.items(), key=lambda x: x[0]):
+            indent = 0 if gpath == '' else gpath.count('.') + 1
+            pad = '   ' * indent
+            printer(f"{pad}In Group '{gpath}'", file=out_stream)
+            for sub, strs in sorted(subdct.items(), key=lambda x: x[0]):
+                if fwd:
+                    printer(f"{pad}   {arrow} {sub}", file=out_stream)
+                else:
+                    printer(f"{pad}   {sub} {arrow}", file=out_stream)
+                for s, ranks in strs.items():
+                    if do_ranks:
+                        oranks = np.empty(len(ranks), dtype=int)
+                        iranks = np.empty(len(ranks), dtype=int)
+                        for i, (ornk, irnk) in enumerate(sorted(ranks)):
+                            oranks[i] = ornk
+                            iranks[i] = irnk
+
+                        if np.all(oranks == oranks[0]):
+                            orstr = str(oranks[0])
+                        else:
+                            sorted_ranks = sorted(oranks)
+                            orstr = str(sorted_ranks)
+                            if len(sorted_ranks) > 3:
+                                for j, r in enumerate(sorted_ranks):
+                                    if j == 0 or r - val == 1:  # noqa: F821, val initialized below
+                                        val = r
+                                    else:
+                                        break
+                                else:
+                                    orstr = f"[{sorted_ranks[0]} to {sorted_ranks[-1]}]"
+
+                        if np.all(iranks == iranks[0]):
+                            irstr = str(iranks[0])
+                        else:
+                            sorted_ranks = sorted(iranks)
+                            irstr = str(sorted(iranks))
+                            if len(sorted_ranks) > 3:
+                                for j, r in enumerate(sorted_ranks):
+                                    if j == 0 or r - val == 1:  # noqa: F821, val initialized below
+                                        val = r
+                                    else:
+                                        break
+                                else:
+                                    irstr = f"[{sorted_ranks[0]} to {sorted_ranks[-1]}]"
+
+                        if orstr == irstr and '[' not in orstr:
+                            printer(f"{pad}      {s}    rank {orstr}", file=out_stream)
+                        else:
+                            printer(f"{pad}      {s}    ranks {orstr} {arrow} {irstr}", file=out_stream)
+                    else:
+                        printer(f"{pad}      {s}", file=out_stream)
+
+        return gdict
+
+
+def _dist_conns_setup_parser(parser):
+    """
+    Set up the openmdao subparser for the 'openmdao dist_conns' command.
+
+    Parameters
+    ----------
+    parser : argparse subparser
+        The parser we're adding options to.
+    """
+    parser.add_argument('file', nargs=1, help='Python file containing the model.')
+    parser.add_argument('-o', default=None, action='store', dest='outfile',
+                        help='Name of output file.  By default, output goes to stdout.')
+    parser.add_argument('-r', '--rev', action='store_true', dest='rev',
+                        help='If set, use "rev" transfer direction instead of "fwd".')
+    parser.add_argument('-p', '--problem', action='store', dest='problem', help='Problem name')
+
+
+def _dist_conns_cmd(options, user_args):
+    """
+    Run the `openmdao dist_conns` command.
+
+    The command shows connections, with relative indexing information, between all
+    variables in the model across all MPI processes.
+
+    Parameters
+    ----------
+    options : argparse Namespace
+        Command line options.
+    user_args : list of str
+        Args to be passed to the user script.
+    """
+    import openmdao.utils.hooks as hooks
+
+    def _dist_conns(prob):
+        model = prob.model
+        if options.problem:
+            if model._problem_meta['name'] != options.problem and \
+                    model._problem_meta['pathname'] != options.problem:
+                return
+        elif '/' in model._problem_meta['pathname']:
+            # by default, only display comm info for a top level problem
+            return
+
+        if options.outfile is None:
+            out_stream = sys.stdout
+        else:
+            out_stream = open(options.outfile, 'w')
+
+        try:
+            show_dist_var_conns(model, rev=options.rev, out_stream=out_stream)
+        finally:
+            if out_stream is not sys.stdout:
+                out_stream.close()
+
+        exit()
+
+    # register the hook to be called right after final_setup on the problem
+    hooks._register_hook('final_setup', 'Problem', post=_dist_conns)
+
+    _load_and_exec(options.file[0], user_args)

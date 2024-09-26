@@ -17,7 +17,7 @@ from openmdao.test_suite.components.paraboloid_distributed import DistParab
 from openmdao.test_suite.components.sellar_feature import SellarMDA
 
 from openmdao.utils.general_utils import run_driver
-from openmdao.utils.testing_utils import use_tempdirs, set_env_vars_context
+from openmdao.utils.testing_utils import use_tempdirs
 from openmdao.utils.assert_utils import assert_near_equal, assert_warning
 from openmdao.utils.mpi import MPI
 try:
@@ -395,12 +395,12 @@ class TestDifferentialEvolution(unittest.TestCase):
             prob.final_setup()
 
         # A value of None for lower and upper is changed to +/- INF_BOUND in add_design_var()
-        if lower == None:
+        if lower is None:
             lower = -INF_BOUND
-        if upper == None:
+        if upper is None:
             upper = INF_BOUND
 
-        msg = ("Invalid bounds for design variable 'x.x'. When using "
+        msg = ("Invalid bounds for design variable 'x'. When using "
                "DifferentialEvolutionDriver, values for both 'lower' and 'upper' "
                f"must be specified between +/-INF_BOUND ({INF_BOUND}), "
                f"but they are: lower={lower}, upper={upper}.")
@@ -510,8 +510,8 @@ class TestMultiObjectiveDifferentialEvolution(unittest.TestCase):
         prob.driver.options['max_gen'] = 100
         prob.driver.options['multi_obj_exponent'] = 1.
         prob.driver.options['penalty_parameter'] = 10.
-        prob.driver.options['multi_obj_weights'] = {'box.front_area': 0.1,
-                                                    'box.top_area': 0.9}
+        prob.driver.options['multi_obj_weights'] = {'front_area': 0.1,
+                                                    'top_area': 0.9}
         prob.driver.options['multi_obj_exponent'] = 1
 
         prob.model.add_design_var('length', lower=0.1, upper=2.)
@@ -550,8 +550,8 @@ class TestMultiObjectiveDifferentialEvolution(unittest.TestCase):
         prob2.driver.options['max_gen'] = 100
         prob2.driver.options['multi_obj_exponent'] = 1.
         prob2.driver.options['penalty_parameter'] = 10.
-        prob2.driver.options['multi_obj_weights'] = {'box.front_area': 0.9,
-                                                     'box.top_area': 0.1}
+        prob2.driver.options['multi_obj_weights'] = {'front_area': 0.9,
+                                                     'top_area': 0.1}
         prob2.driver.options['multi_obj_exponent'] = 1
 
         prob2.model.add_design_var('length', lower=0.1, upper=2.)
@@ -587,9 +587,6 @@ class TestConstrainedDifferentialEvolution(unittest.TestCase):
         # The old implementation of the seed calculation erroneously set the seed to 0
         # regardless of the value of the random_state passed in (in the non-MPI case only).
         os.environ['DifferentialEvolutionDriver_seed'] = '0'
-
-    def tearDown(self):
-        del os.environ['DifferentialEvolutionDriver_seed']  # clean up environment
 
     def tearDown(self):
         del os.environ['DifferentialEvolutionDriver_seed']  # clean up environment
@@ -648,10 +645,10 @@ class TestConstrainedDifferentialEvolution(unittest.TestCase):
     def test_driver_supports(self):
         prob = om.Problem()
 
-        indeps = prob.model.add_subsystem('indeps', om.IndepVarComp(), promotes=['*'])
+        prob.model.add_subsystem('indeps', om.IndepVarComp(), promotes=['*'])
 
         # setup the optimization
-        driver = prob.driver = om.DifferentialEvolutionDriver()
+        prob.driver = om.DifferentialEvolutionDriver()
 
         with self.assertRaises(KeyError) as raises_msg:
             prob.driver.supports['equality_constraints'] = False
@@ -848,9 +845,9 @@ class TestConstrainedDifferentialEvolution(unittest.TestCase):
             prob.final_setup()
 
         # A value of None for lower and upper is changed to +/- INF_BOUND in add_constraint()
-        if lower == None:
+        if lower is None:
             lower = -INF_BOUND
-        if upper == None:
+        if upper is None:
             upper = INF_BOUND
 
         msg = ("Invalid bounds for constraint 'const.g'. "
@@ -956,9 +953,6 @@ class D1(om.ExplicitComponent):
             outputs['y1'] = 28.0 - 0.2*y2 + x
 
     def compute_partials(self, inputs, partials, discrete_inputs=None):
-        y2 = inputs['y2']
-        x = inputs['x']
-
         partials['y1', 'y2'] = -0.2
         if self.comm.rank == 1:
             partials['y1', 'x'] = 2.0
@@ -978,7 +972,7 @@ class D2(om.ExplicitComponent):
         y1 = inputs['y1']
 
         if self.comm.rank == 1:
-            outputs['y2'] = y2 = y1**.5 - 3
+            outputs['y2'] = y1**.5 - 3
         else:
             outputs['y2'] = y1**.5 + 7
 
@@ -1116,7 +1110,7 @@ class MPITestDifferentialEvolution4Procs(unittest.TestCase):
         # a separate case file should have been written by rank 0 of each parallel model
         # (the top two global ranks)
         rank = prob.comm.rank
-        filename = "cases.sql_%d" % rank
+        filename = f"{prob.get_outputs_dir()}/cases.sql_{rank}"
 
         if rank < num_models:
             expect_msg = "Cases from rank %d are being written to %s." % (rank, filename)

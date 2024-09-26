@@ -1,9 +1,8 @@
 """Define the COOmatrix class."""
 import numpy as np
 from numpy import ndarray
-from scipy.sparse import coo_matrix, csc_matrix
+from scipy.sparse import coo_matrix
 
-from collections import OrderedDict
 
 from openmdao.core.constants import INT_DTYPE
 from openmdao.matrices.matrix import Matrix, _compute_index_map
@@ -49,7 +48,7 @@ class COOMatrix(Matrix):
         """
         submats = self._submats
         metadata = self._metadata
-        key_ranges = self._key_ranges = OrderedDict()
+        key_ranges = self._key_ranges = {}
 
         start = end = 0
         for key, (info, loc, src_indices, shape, factor) in submats.items():
@@ -92,11 +91,11 @@ class COOMatrix(Matrix):
                 jac_type = ndarray
 
                 if src_indices is None:
-                    colrange = np.arange(col_offset, col_offset + shape[1], dtype=INT_DTYPE)
+                    colrange = range(col_offset, col_offset + shape[1])
                 else:
                     colrange = src_indices.shaped_array()
+                ncols = len(colrange)
 
-                ncols = colrange.size
                 subrows = rows[start:end]
                 subcols = cols[start:end]
 

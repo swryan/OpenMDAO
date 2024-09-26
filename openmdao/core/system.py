@@ -2,6 +2,7 @@
 import sys
 import os
 import hashlib
+import pathlib
 import time
 import functools
 
@@ -16,8 +17,9 @@ from numbers import Integral
 
 import numpy as np
 
-from openmdao.core.constants import _DEFAULT_OUT_STREAM, _UNDEFINED, INT_DTYPE, INF_BOUND, \
-    _SetupStatus
+from openmdao.core.constants import _DEFAULT_COLORING_DIR, _DEFAULT_OUT_STREAM, \
+    _UNDEFINED, INT_DTYPE, INF_BOUND, _SetupStatus
+from openmdao.jacobians.jacobian import Jacobian
 from openmdao.jacobians.assembled_jacobian import DenseJacobian, CSCJacobian
 from openmdao.recorders.recording_manager import RecordingManager
 from openmdao.vectors.vector import _full_slice
@@ -25,7 +27,7 @@ from openmdao.utils.mpi import MPI, multi_proc_exception_check
 from openmdao.utils.options_dictionary import OptionsDictionary
 from openmdao.utils.record_util import create_local_meta, check_path, has_match
 from openmdao.utils.units import is_compatible, unit_conversion, simplify_unit
-from openmdao.utils.variable_table import write_var_table
+from openmdao.utils.variable_table import write_var_table, NA
 from openmdao.utils.array_utils import evenly_distrib_idxs, shape_to_len
 from openmdao.utils.name_maps import name2abs_name, name2abs_names
 from openmdao.utils.coloring import _compute_coloring, Coloring, \
@@ -33,10 +35,12 @@ from openmdao.utils.coloring import _compute_coloring, Coloring, \
 import openmdao.utils.coloring as coloring_mod
 from openmdao.utils.indexer import indexer
 from openmdao.utils.om_warnings import issue_warning, \
-    DerivativesWarning, PromotionWarning, UnusedOptionWarning, UnitsWarning
+    DerivativesWarning, PromotionWarning, UnusedOptionWarning, UnitsWarning, warn_deprecation
 from openmdao.utils.general_utils import determine_adder_scaler, \
-    format_as_float_or_array, ContainsAll, all_ancestors, make_set, match_prom_or_abs, \
-    ensure_compatible, env_truthy, make_traceback, _is_slicer_op
+    format_as_float_or_array, all_ancestors, match_prom_or_abs, \
+    ensure_compatible, env_truthy, make_traceback, _is_slicer_op, _wrap_comm, _unwrap_comm, \
+    _om_mpi_debug, SystemMeta
+from openmdao.utils.file_utils import _get_outputs_dir
 from openmdao.approximation_schemes.complex_step import ComplexStep
 from openmdao.approximation_schemes.finite_difference import FiniteDifference
 
@@ -169,7 +173,7 @@ def collect_errors(method):
     return wrapper
 
 
-class System(object):
+class System(object, metaclass=SystemMeta):
     """
     Base class for all systems in OpenMDAO.
 
@@ -193,7 +197,7 @@ class System(object):
         Name of the system, must be different from siblings.
     pathname : str
         Global name of the system, including the path.
-    comm : MPI.Comm or <FakeComm>
+    _comm : MPI.Comm or <FakeComm>
         MPI communicator object.
     options : OptionsDictionary
         options dictionary
@@ -233,19 +237,19 @@ class System(object):
     _var_prom2inds : dict
         Maps promoted name to src_indices in scope of system.
     _var_allprocs_prom2abs_list : {'input': dict, 'output': dict}
-        Dictionary mapping promoted names to list of all absolute names.
+        Dictionary mapping promoted names (continuous and discrete) to list of all absolute names.
         For outputs, the list will have length one since promoted output names are unique.
     _var_abs2prom : {'input': dict, 'output': dict}
-        Dictionary mapping absolute names to promoted names, on current proc.
+        Dictionary mapping absolute names to promoted names, on current proc. Contains continuous
+        and discrete variables.
     _var_allprocs_abs2prom : {'input': dict, 'output': dict}
-        Dictionary mapping absolute names to promoted names, on all procs.
+        Dictionary mapping absolute names to promoted names, on all procs.  Contains continuous
+        and discrete variables.
     _var_allprocs_abs2meta : dict
-        Dictionary mapping absolute names to metadata dictionaries for allprocs variables.
-        The keys are
-        ('units', 'shape', 'size') for inputs and
-        ('units', 'shape', 'size', 'ref', 'ref0', 'res_ref', 'distributed') for outputs.
+        Dictionary mapping absolute names to metadata dictionaries for allprocs continuous
+        variables.
     _var_abs2meta : dict
-        Dictionary mapping absolute names to metadata dictionaries for myproc variables.
+        Dictionary mapping absolute names to metadata dictionaries for myproc continuous variables.
     _var_discrete : dict
         Dictionary of discrete var metadata and values local to this process.
     _var_allprocs_discrete : dict
@@ -305,20 +309,10 @@ class System(object):
         Overrides aproximation outputs. This is set when calculating system derivatives, and serves
         as a way to communicate the driver's output quantities to the approximation objects so that
         we only take derivatives of variables that the driver needs.
-    _owns_approx_of_idx : dict
-        Index for override 'of' approximations if declared. When the user calls  `add_objective`
-        or `add_constraint`, they may optionally specify an "indices" argument. This argument must
-        also be communicated to the approximations when they are set up so that 1) the Jacobian is
-        the correct size, and 2) we don't perform any extra unnecessary calculations.
     _owns_approx_wrt : list or None
         Overrides aproximation inputs. This is set when calculating system derivatives, and serves
         as a way to communicate the driver's input quantities to the approximation objects so that
         we only take derivatives with respect to variables that the driver needs.
-    _owns_approx_wrt_idx : dict
-        Index for override 'wrt' approximations if declared. When the user calls  `add_designvar`
-        they may optionally specify an "indices" argument. This argument must also be communicated
-        to the approximations when they are set up so that 1) the Jacobian is the correct size, and
-        2) we don't perform any extra unnecessary calculations.
     _subjacs_info : dict of dict
         Sub-jacobian metadata for each (output, input) pair added using
         declare_partials. Members of each pair may be glob patterns.
@@ -342,9 +336,6 @@ class System(object):
         will not set the matrix_free flag correctly for Component instances having a matrix vector
         product function that is added dynamically (not declared as part of the class) and in that
         case the matrix_free flag must be set manually to True.
-    _relevant : dict
-        Mapping of a VOI to a tuple containing dependent inputs, dependent outputs,
-        and dependent systems.
     _mode : str
         Indicates derivative direction for the model, either 'fwd' or 'rev'.
     _scope_cache : dict
@@ -402,9 +393,9 @@ class System(object):
     _promotion_tree : dict
         Mapping of system path to promotion info indicating all subsystems where variables
         were promoted.
-    _run_on_opt: list of bool
-        Indicates whether this system should run before, during, or after the optimization process
-        (if there is an optimization process at all).
+    _during_sparsity : bool
+        If True, we're doing a sparsity computation and uncolored approxs need to be restricted
+        to only colored columns.
     """
 
     def __init__(self, num_par_fd=1, **kwargs):
@@ -413,7 +404,7 @@ class System(object):
         """
         self.name = ''
         self.pathname = None
-        self.comm = None
+        self._comm = None
         self._is_local = False
 
         # System options
@@ -498,8 +489,6 @@ class System(object):
         self._owns_approx_jac_meta = {}
         self._owns_approx_wrt = None
         self._owns_approx_of = None
-        self._owns_approx_wrt_idx = {}
-        self._owns_approx_of_idx = {}
 
         self.under_complex_step = False
         self.under_finite_difference = False
@@ -513,8 +502,6 @@ class System(object):
         self._static_subsystems_allprocs = {}
         self._static_design_vars = {}
         self._static_responses = {}
-
-        self._mode = None
 
         self._scope_cache = {}
 
@@ -543,16 +530,64 @@ class System(object):
 
         self._filtered_vars_to_record = {}
         self._owning_rank = None
-        self._coloring_info = _DEFAULT_COLORING_META.copy()
+        self._coloring_info = coloring_mod.Partial_ColoringMeta()
         self._first_call_to_linearize = True  # will check in first call to _linearize
         self._tot_jac = None
         self._saved_errors = None if env_truthy('OPENMDAO_FAIL_FAST') else []
 
         self._output_solver_options = {}
         self._promotion_tree = None
-        # need separate values for [PRE, OPTIMIZE, POST] since a Group may participate in
-        # multiple phases because some of its subsystems may be in one phase and some in another.
-        self._run_on_opt = [False, True, False]
+
+        self._during_sparsity = False
+
+    if _om_mpi_debug:
+        @property
+        def comm(self):
+            """
+            Return the wrapped MPI communicator object for the system.
+
+            Returns
+            -------
+            DebugComm
+                Wrapped MPI communicator object.
+            """
+            return _wrap_comm(self._comm, self.msginfo)
+
+        @comm.setter
+        def comm(self, comm):
+            """
+            Set the MPI communicator object for the system.
+
+            Parameters
+            ----------
+            comm : MPI.Comm or DebugComm
+                Wrapped or unwrapped MPI communicator object.
+            """
+            self._comm = _unwrap_comm(comm)
+    else:
+        @property
+        def comm(self):
+            """
+            Return the MPI communicator object for the system.
+
+            Returns
+            -------
+            MPI.Comm
+                MPI communicator object.
+            """
+            return self._comm
+
+        @comm.setter
+        def comm(self, comm):
+            """
+            Set the MPI communicator object for the system.
+
+            Parameters
+            ----------
+            comm : MPI.Comm
+                MPI communicator object.
+            """
+            self._comm = comm
 
     @property
     def under_approx(self):
@@ -628,7 +663,7 @@ class System(object):
         Iterate over (name, offset, end, slice, dist_sizes) for each 'of' (row) var in the jacobian.
 
         The slice is internal to the given variable in the result, and this is always a full
-        slice except possible for groups where _owns_approx_of_idx is defined.
+        slice except when indices are defined for the 'of' variable.
 
         Yields
         ------
@@ -672,8 +707,8 @@ class System(object):
             Starting index.
         int
             Ending index.
-        Vector
-            Either the _outputs or _inputs vector.
+        Vector or None
+            Either the _outputs or _inputs vector if var is local else None.
         slice
             A full slice.
         ndarray or None
@@ -1031,14 +1066,14 @@ class System(object):
                                equals=_UNDEFINED, lower=_UNDEFINED, upper=_UNDEFINED,
                                adder=_UNDEFINED, scaler=_UNDEFINED, alias=_UNDEFINED):
         """
-        Set options for objectives in the model.
+        Set options for constraints in the model.
 
         Can be used to set options that were set using add_constraint.
 
         Parameters
         ----------
         name : str
-            Name of the response variable in the system.
+            Name of the response variable in the system, or alias if given.
         ref : float or ndarray, optional
             Value of response variable that scales to 1.0 in the driver.
         ref0 : float or ndarray, optional
@@ -1066,6 +1101,12 @@ class System(object):
             raise TypeError('{}: The name argument should be a string, '
                             'got {}'.format(self.msginfo, name))
 
+        if alias is not _UNDEFINED:
+            warn_deprecation("Option 'alias' of set_constraint_options is deprecated. "
+                             "If the constraint has an alias, provide that as the "
+                             "'name' argument to set_constraint_options.")
+            name = alias
+
         are_new_bounds = equals is not _UNDEFINED or lower is not _UNDEFINED or upper is not \
             _UNDEFINED
         are_new_scaling = scaler is not _UNDEFINED or adder is not _UNDEFINED or \
@@ -1081,26 +1122,16 @@ class System(object):
             msg = "{}: Constraint '{}' cannot be both equality and inequality."
             raise ValueError(msg.format(self.msginfo, name))
 
-        if self._static_mode:
+        if self._static_mode and self._static_responses:
             responses = self._static_responses
         else:
             responses = self._responses
 
-        # Look through responses to see if there are multiple responses with that name
-        aliases = [resp['alias'] for resp in responses.values() if resp['name'] == name]
-        if len(aliases) > 1 and alias is _UNDEFINED:
-            msg = "{}: set_constraint_options called with constraint variable '{}' that has " \
-                  "multiple aliases: {}. Call set_objective_options with the 'alias' argument " \
-                  "set to one of those aliases."
-            raise RuntimeError(msg.format(self.msginfo, name, aliases))
-
-        if len(aliases) == 0:
-            msg = "{}: set_constraint_options called with constraint variable '{}' that does not " \
-                  "exist."
-            raise RuntimeError(msg.format(self.msginfo, name))
-
-        if alias is not _UNDEFINED:
-            name = alias
+        if name not in responses:
+            msg = f"{self.msginfo}: set_constraint_options called with " \
+                f"constraint '{name}' that does not exist. If the constraint was provided " \
+                f"an alias, use that in place of its name for set_constraint_options."
+            raise RuntimeError(msg)
 
         existing_cons_meta = responses[name]
         are_existing_scaling = existing_cons_meta['scaler'] is not None or \
@@ -1233,7 +1264,7 @@ class System(object):
         Parameters
         ----------
         name : str
-            Name of the response variable in the system.
+            Name of the response variable in the system, or alias if given.
         ref : float or ndarray, optional
             Value of response variable that scales to 1.0 in the driver.
         ref0 : float or ndarray, optional
@@ -1247,40 +1278,38 @@ class System(object):
             is second in precedence. adder and scaler are an alterantive to using ref
             and ref0.
         alias : str
-            Alias for this response. Necessary when adding multiple objectives on different
-            indices or slices of a single variable.
+            Alias for this response. Used to disambiguate variable names when adding
+            multiple objectives on different indices or slices of a single variable. Deprecated.
         """
         # Check inputs
         # Name must be a string
         if not isinstance(name, str):
-            raise TypeError('{}: The name argument should be a string, got {}'.format(self.msginfo,
-                                                                                      name))
+            raise TypeError(f'{self.msginfo}: The name argument should be a string, got {name}')
+
+        if alias is not _UNDEFINED:
+            warn_deprecation("Option 'alias' of set_objective_options is deprecated. "
+                             "If the objective has an alias, provide that as the 'name' "
+                             "argument to set_objective_options.")
+            name = alias
+
         # At least one of the scaling parameters must be set or function does nothing
         if scaler is _UNDEFINED and adder is _UNDEFINED and ref is _UNDEFINED and ref0 == \
                 _UNDEFINED:
             raise RuntimeError(
                 'Must set a value for at least one argument in call to set_objective_options.')
 
-        if self._static_mode:
+        if self._static_mode and self._static_responses:
             responses = self._static_responses
         else:
             responses = self._responses
 
-        # Look through responses to see if there are multiple responses with that name
-        aliases = [resp['alias'] for resp in responses.values() if resp['name'] == name]
-        if len(aliases) > 1 and alias is _UNDEFINED:
-            msg = "{}: set_objective_options called with objective variable '{}' that has " \
-                  "multiple aliases: {}. Call set_objective_options with the 'alias' argument " \
-                  "set to one of those aliases."
-            raise RuntimeError(msg.format(self.msginfo, name, aliases))
-
-        if len(aliases) == 0:
-            msg = "{}: set_objective_options called with objective variable '{}' that does not " \
-                  "exist."
-            raise RuntimeError(msg.format(self.msginfo, name))
-
-        if alias is not _UNDEFINED:
-            name = alias
+        # If the name is not in responses, which are keyed by alias, then it was given
+        # as the actual variable name but the variable has a different alias.
+        if name not in responses:
+            msg = f"{self.msginfo}: set_objective_options called with " \
+                f"objective '{name}' that does not exist. If the objective was provided " \
+                f"an alias, use that in place of its name for set_objective_options."
+            raise RuntimeError(msg)
 
         # Since one or more of these are being set by the incoming arguments, the
         #   ones that are not being set should be set to None since they will be re-computed below
@@ -1396,6 +1425,20 @@ class System(object):
 
         raise KeyError(f"{self.msginfo}: source for '{name}' not found.")
 
+    def _get_graph_node_meta(self):
+        """
+        Return metadata to add to this system's graph node.
+
+        Returns
+        -------
+        dict
+            Metadata for this system's graph node.
+        """
+        return {
+            'classname': type(self).__name__,
+            'implicit': not self.is_explicit(),
+        }
+
     def _setup_check(self):
         """
         Do any error checking on user's setup, before any other recursion happens.
@@ -1410,7 +1453,10 @@ class System(object):
 
     def _get_approx_subjac_keys(self):
         """
-        Return a list of (of, wrt) keys needed for approx derivs for this group.
+        Return a list of (of, wrt) keys needed for approx derivs for this system.
+
+        All keys are absolute names. If this system is the top level Group, the keys will be source
+        names.  If not, they will be absolute input and output names.
 
         Returns
         -------
@@ -1436,11 +1482,11 @@ class System(object):
             if a specific coloring is passed in.
         """
         if coloring_mod._force_dyn_coloring and coloring is _STD_COLORING_FNAME:
-            self._coloring_info['dynamic'] = True
+            self._coloring_info.dynamic = True
             return  # don't use static this time
 
-        self._coloring_info['static'] = coloring
-        self._coloring_info['dynamic'] = False
+        self._coloring_info.static = coloring
+        self._coloring_info.dynamic = False
 
         if coloring is not _STD_COLORING_FNAME:
             if recurse:
@@ -1505,7 +1551,7 @@ class System(object):
         show_summary : bool
             If True, display summary information after generating coloring.
         show_sparsity : bool
-            If True, display sparsity with coloring info after generating coloring.
+            If True, plot sparsity with coloring info after generating coloring.
         """
         if method not in ('fd', 'cs', 'jax'):
             raise RuntimeError(
@@ -1514,52 +1560,50 @@ class System(object):
         self._has_approx = True
 
         # start with defaults
-        options = _DEFAULT_COLORING_META.copy()
+        options = coloring_mod.Partial_ColoringMeta()
 
         if method != 'jax':
             approx = self._get_approx_scheme(method)
-            options.update(approx.DEFAULT_OPTIONS)
+            options.update({k: v for k, v in approx.DEFAULT_OPTIONS.items()
+                            if k in ('step', 'form')})
 
-        if self._coloring_info['static'] is None:
-            options['dynamic'] = True
+        if self._coloring_info.static is None:
+            options.dynamic = True
         else:
-            options['dynamic'] = False
-            options['static'] = self._coloring_info['static']
+            options.dynamic = False
+            options.static = self._coloring_info.static
 
-        options['wrt_patterns'] = [wrt] if isinstance(wrt, str) else wrt
-        options['method'] = method
-        options['per_instance'] = per_instance
-        options['num_full_jacs'] = num_full_jacs
-        options['tol'] = tol
-        options['orders'] = orders
-        options['perturb_size'] = perturb_size
-        options['min_improve_pct'] = min_improve_pct
-        options['show_summary'] = show_summary
-        options['show_sparsity'] = show_sparsity
-        options['coloring'] = self._coloring_info['coloring']
+        options.coloring = self._coloring_info.coloring
+
+        if isinstance(wrt, str):
+            options.wrt_patterns = (wrt, )
+        else:
+            options.wrt_patterns = tuple(wrt)
+        options.method = method
+        options.per_instance = per_instance
+        options.num_full_jacs = num_full_jacs
+        options.tol = tol
+        options.orders = orders
+        options.perturb_size = perturb_size
+        options.min_improve_pct = min_improve_pct
+        options.show_summary = show_summary
+        options.show_sparsity = show_sparsity
         if form is not None:
-            options['form'] = form
+            options.form = form
         if step is not None:
-            options['step'] = step
+            options.step = step
 
         self._coloring_info = options
 
-    def _coloring_pct_too_low(self, coloring, info):
-        # if the improvement wasn't large enough, don't use coloring
-        pct = coloring._solves_info()[-1]
-        if info['min_improve_pct'] > pct:
-            info['coloring'] = info['static'] = None
-            msg = f"Coloring was deactivated.  Improvement of {pct:.1f}% was less than min " \
-                  f"allowed ({info['min_improve_pct']:.1f}%)."
-            issue_warning(msg, prefix=self.msginfo, category=DerivativesWarning)
-            if not info['per_instance']:
-                coloring_mod._CLASS_COLORINGS[self.get_coloring_fname()] = None
-            return True
-        return False
-
     def _finalize_coloring(self, coloring, info, sp_info, sparsity_time):
         # if the improvement wasn't large enough, don't use coloring
-        if self._coloring_pct_too_low(coloring, info):
+        info.set_coloring(coloring, msginfo=self.msginfo)
+        if info._failed:
+            if not info.per_instance:
+                # save the class coloring for so resources won't be wasted computing
+                # a bad coloring
+                fname = self.get_coloring_fname(mode='output')
+                coloring_mod._CLASS_COLORINGS[fname] = None
             return False
 
         sp_info['sparsity_time'] = sparsity_time
@@ -1567,7 +1611,7 @@ class System(object):
         sp_info['class'] = type(self).__name__
         sp_info['type'] = 'semi-total' if self._subsystems_allprocs else 'partial'
 
-        ordered_wrt_info = list(self._jac_wrt_iter(info['wrt_matches']))
+        ordered_wrt_info = list(self._jac_wrt_iter(info.wrt_matches))
         ordered_of_info = list(self._jac_of_iter())
 
         if self.pathname:
@@ -1580,24 +1624,19 @@ class System(object):
         coloring._col_var_sizes = [t[2] - t[1] for t in ordered_wrt_info]
 
         coloring._meta.update(info)  # save metadata we used to create the coloring
-        del coloring._meta['coloring']
         coloring._meta.update(sp_info)
 
-        info['coloring'] = coloring
-
-        if info['show_sparsity'] or info['show_summary']:
+        if info.show_sparsity or info.show_summary:
             print("\nColoring for '%s' (class %s)" % (self.pathname, type(self).__name__))
 
-        if info['show_sparsity']:
-            coloring.display_txt(summary=False)
-        if info['show_summary']:
-            coloring.summary()
+        info.display()
 
         self._save_coloring(coloring)
 
-        if not info['per_instance']:
+        if not info.per_instance:
             # save the class coloring for other instances of this class to use
-            coloring_mod._CLASS_COLORINGS[self.get_coloring_fname()] = coloring
+            ofname = self.get_coloring_fname(mode='output')
+            coloring_mod._CLASS_COLORINGS[ofname] = coloring
 
         return True
 
@@ -1625,11 +1664,11 @@ class System(object):
         """
         if recurse:
             colorings = []
-            my_coloring = self._coloring_info['coloring']
+            my_coloring = self._coloring_info.coloring
             grad_systems = self._get_gradient_nl_solver_systems()
             for s in self.system_iter(include_self=True, recurse=True):
                 if my_coloring is None or s in grad_systems:
-                    if s._coloring_info['coloring'] is not None:
+                    if s._coloring_info.coloring is not None:
                         coloring = s._compute_coloring(recurse=False, **overrides)[0]
                         colorings.append(coloring)
                         if coloring is not None:
@@ -1647,14 +1686,12 @@ class System(object):
         except KeyError:
             pass
 
-        info.update(**overrides)
-        if isinstance(info['wrt_patterns'], str):
-            info['wrt_patterns'] = [info['wrt_patterns']]
+        info.update(overrides)
 
         if info['method'] is None and self._approx_schemes:
             info['method'] = list(self._approx_schemes)[0]
 
-        if info['coloring'] is None:
+        if info.coloring is None:
             # check to see if any approx or jax derivs have been declared
             for meta in self._subjacs_info.values():
                 if 'method' in meta and meta['method']:
@@ -1679,19 +1716,19 @@ class System(object):
         if not use_jax:
             approx_scheme = self._get_approx_scheme(info['method'])
 
-        if info['coloring'] is None and info['static'] is None:
-            info['dynamic'] = True
+        if info.coloring is None and info.static is None:
+            info.dynamic = True
 
-        coloring_fname = self.get_coloring_fname()
+        coloring_fname = self.get_coloring_fname(mode='output')
 
         # if we find a previously computed class coloring for our class, just use that
         # instead of regenerating a coloring.
-        if not info['per_instance'] and coloring_fname in coloring_mod._CLASS_COLORINGS:
-            info['coloring'] = coloring = coloring_mod._CLASS_COLORINGS[coloring_fname]
+        if not info.per_instance and coloring_fname in coloring_mod._CLASS_COLORINGS:
+            info.coloring = coloring = coloring_mod._CLASS_COLORINGS[coloring_fname]
             if coloring is None:
                 print("\nClass coloring for class '{}' wasn't good enough, "
                       "so skipping for '{}'".format(type(self).__name__, self.pathname))
-                info['static'] = None
+                info.static = None
             else:
                 print("\n{} using class coloring for class '{}'".format(self.pathname,
                                                                         type(self).__name__))
@@ -1711,9 +1748,9 @@ class System(object):
         # tell approx scheme to limit itself to only colored columns
         if not use_jax:
             approx_scheme._reset()
-            approx_scheme._during_sparsity_comp = True
+            self._during_sparsity = True
 
-        self._update_wrt_matches(info)
+        info._update_wrt_matches(self)
 
         save_jac = self._jacobian
 
@@ -1748,14 +1785,14 @@ class System(object):
                     self._outputs.set_val(starting_outputs +
                                           out_offsets * np.random.random(out_offsets.size))
                 if is_total:
-                    self._solve_nonlinear()
+                    with self._relevance.nonlinear_active('iter'):
+                        self._solve_nonlinear()
                 else:
                     self._apply_nonlinear()
 
                 if not use_jax:
                     for scheme in self._approx_schemes.values():
                         scheme._reset()  # force a re-initialization of approx
-                        scheme._during_sparsity_comp = True
 
             if use_jax:
                 self._jax_linearize()
@@ -1767,6 +1804,8 @@ class System(object):
         self._jacobian = save_jac
 
         if not use_jax:
+            self._during_sparsity = False
+
             # revert uncolored approx back to normal
             for scheme in self._approx_schemes.values():
                 scheme._reset()
@@ -1800,21 +1839,34 @@ class System(object):
     def _setup_approx_coloring(self):
         pass
 
-    def get_coloring_fname(self):
+    def get_coloring_fname(self, mode):
         """
         Return the full pathname to a coloring file.
 
+        Parameters
+        ----------
+        mode : str
+            The type of coloring file desired. Must be either 'input' or 'output'.
+
         Returns
         -------
-        str
+        pathlib.Path
             Full pathname of the coloring file.
         """
-        directory = self._problem_meta['coloring_dir']
+        prob_coloring_dir = self._problem_meta['coloring_dir']
+        if mode == 'output' or prob_coloring_dir is _DEFAULT_COLORING_DIR:
+            directory = self.get_outputs_dir('coloring_files', mkdir=True)
+        elif mode == 'input':
+            directory = pathlib.Path(prob_coloring_dir).absolute()
+        else:
+            raise ValueError(f"{self.msginfo}: get_coloring_fname requires mode"
+                             "to be one of 'input' or 'output'.")
+
         if not self.pathname:
             # total coloring
-            return os.path.join(directory, 'total_coloring.pkl')
+            return directory / 'total_coloring.pkl'
 
-        if self._coloring_info.get('per_instance'):
+        if self._coloring_info.per_instance:
             # base the name on the instance pathname
             fname = 'coloring_' + self.pathname.replace('.', '_') + '.pkl'
         else:
@@ -1822,7 +1874,7 @@ class System(object):
             fname = 'coloring_' + '_'.join(
                 [self.__class__.__module__.replace('.', '_'), self.__class__.__name__]) + '.pkl'
 
-        return os.path.join(directory, fname)
+        return directory / fname
 
     def _save_coloring(self, coloring):
         """
@@ -1836,7 +1888,7 @@ class System(object):
         # under MPI, only save on proc 0
         if ((self._full_comm is not None and self._full_comm.rank == 0) or
                 (self._full_comm is None and self.comm.rank == 0)):
-            coloring.save(self.get_coloring_fname())
+            coloring.save(self.get_coloring_fname(mode='output'))
 
     def _get_static_coloring(self):
         """
@@ -1850,34 +1902,40 @@ class System(object):
             Coloring object, possible loaded from a file, or None
         """
         info = self._coloring_info
-        coloring = info['coloring']
+        coloring = info.coloring
         if coloring is not None:
             return coloring
 
-        static = info['static']
+        static = info.static
         if static is _STD_COLORING_FNAME or isinstance(static, str):
+            std_fname = self.get_coloring_fname(mode='input')
             if static is _STD_COLORING_FNAME:
-                fname = self.get_coloring_fname()
+                fname = std_fname
             else:
                 fname = static
-            print("%s: loading coloring from file %s" % (self.msginfo, fname))
-            info['coloring'] = coloring = Coloring.load(fname)
-            if info['wrt_patterns'] != coloring._meta['wrt_patterns']:
+            print(f"{self.msginfo}: loading coloring from file {fname}")
+            info.coloring = coloring = Coloring.load(fname)
+
+            if fname != std_fname:
+                # save it in the standard location
+                self._save_coloring(coloring)
+
+            if info.wrt_patterns != coloring._meta['wrt_patterns']:
                 raise RuntimeError("%s: Loaded coloring has different wrt_patterns (%s) than "
                                    "declared ones (%s)." %
                                    (self.msginfo, coloring._meta['wrt_patterns'],
-                                    info['wrt_patterns']))
-            info.update(info['coloring']._meta)
+                                    info.wrt_patterns))
+            info.update(info.coloring._meta)
             approx = self._get_approx_scheme(info['method'])
             # force regen of approx groups during next compute_approximations
             approx._reset()
         elif isinstance(static, coloring_mod.Coloring):
-            info['coloring'] = coloring = static
+            info.coloring = coloring = static
 
         if coloring is not None:
-            info['dynamic'] = False
+            info.dynamic = False
 
-        info['static'] = coloring
+        info.static = coloring
 
         return coloring
 
@@ -1893,10 +1951,14 @@ class System(object):
             Coloring object, possible loaded from a file or dynamically generated, or None
         """
         coloring = self._get_static_coloring()
-        if coloring is None and self._coloring_info['dynamic']:
-            self._coloring_info['coloring'] = coloring = self._compute_coloring()[0]
-            if coloring is not None:
-                self._coloring_info.update(coloring._meta)
+        if coloring is None:
+            if self._coloring_info.dynamic:
+                self._coloring_info.coloring = coloring = self._compute_coloring()[0]
+                if coloring is not None:
+                    self._coloring_info.update(coloring._meta)
+        else:
+            if not self._coloring_info.dynamic:
+                coloring._check_config_partial(self)
 
         return coloring
 
@@ -2022,7 +2084,7 @@ class System(object):
         self._design_vars.update(self._static_design_vars)
         self._responses.update(self._static_responses)
 
-    def _setup_procs(self, pathname, comm, mode, prob_meta):
+    def _setup_procs(self, pathname, comm, prob_meta):
         """
         Execute first phase of the setup process.
 
@@ -2035,16 +2097,12 @@ class System(object):
             Global name of the system, including the path.
         comm : MPI.Comm or <FakeComm>
             MPI communicator object.
-        mode : str
-            Derivatives calculation mode, 'fwd' for forward, and 'rev' for
-            reverse (adjoint). Default is 'rev'.
         prob_meta : dict
             Problem level options.
         """
         self._reset_setup_vars()
 
         self.pathname = pathname
-        self._mode = mode
         self._set_problem_meta(prob_meta)
         self.load_model_options()
 
@@ -2104,8 +2162,7 @@ class System(object):
 
         has_scaling = False
 
-        dv = self._design_vars
-        for name, meta in dv.items():
+        for name, meta in self._design_vars.items():
 
             units = meta['units']
             meta['total_adder'] = meta['adder']
@@ -2134,13 +2191,28 @@ class System(object):
                           "were specified."
                     raise RuntimeError(msg.format(self.msginfo, name, var_units, units))
 
-                factor, offset = unit_conversion(var_units, units)
-                base_adder, base_scaler = determine_adder_scaler(None, None,
-                                                                 meta['adder'],
-                                                                 meta['scaler'])
+                # Derivation of the total scaler and total adder for design variables:
+                # Given based design variable value y
+                # First we apply the desired unit conversion
+                # y_in_desired_units = unit_scaler * (y + unit_adder)
+                # Then we apply the user-declared scaling
+                # y_opt = declared_scaler * (y_in_desired_units + declared_adder)
+                # Thus
+                # y_opt = declared_scaler * (unit_scaler * (y + unit_adder) + declared_adder)
+                # And collecting terms
+                # y_opt = [declared_scaler * unit_scaler]
+                #         * (y + unit_adder + declared_adder/unit_scaler)
+                # So the total_scaler and total_adder for the optimizer are:
+                # total_scaler = declared_scaler * unit_scaler
+                # total_adder = unit_adder + declared_adder / unit_scaler
 
-                meta['total_adder'] = offset + base_adder / factor
-                meta['total_scaler'] = base_scaler * factor
+                unit_scaler, unit_adder = unit_conversion(var_units, units)
+                declared_adder, declared_scaler = determine_adder_scaler(None, None,
+                                                                         meta['adder'],
+                                                                         meta['scaler'])
+
+                meta['total_adder'] = unit_adder + declared_adder / unit_scaler
+                meta['total_scaler'] = declared_scaler * unit_scaler
 
             if meta['total_scaler'] is not None:
                 has_scaling = True
@@ -2178,13 +2250,12 @@ class System(object):
                     raise RuntimeError(msg.format(self.msginfo, type_dict[meta['type']],
                                                   name, src_units, units))
 
-                factor, offset = unit_conversion(src_units, units)
-                base_adder, base_scaler = determine_adder_scaler(None, None,
-                                                                 meta['adder'],
-                                                                 meta['scaler'])
+                unit_scaler, unit_adder = unit_conversion(src_units, units)
+                declared_adder, declared_scaler =\
+                    determine_adder_scaler(None, None, meta['adder'], meta['scaler'])
 
-                meta['total_scaler'] = base_scaler * factor
-                meta['total_adder'] = offset + base_adder / factor
+                meta['total_scaler'] = declared_scaler * unit_scaler
+                meta['total_adder'] = unit_adder + declared_adder / unit_scaler
 
             if meta['total_scaler'] is not None:
                 has_scaling = True
@@ -2585,9 +2656,8 @@ class System(object):
         """
         Context manager for vectors.
 
-        For the given vec_name, return vectors that use a set of
-        internal variables that are relevant to the current matrix-vector
-        product.  This is called only from _apply_linear.
+        Return vectors that use a set of internal variables that are relevant to the current
+        matrix-vector product.  This is called only from _apply_linear.
 
         Parameters
         ----------
@@ -2757,8 +2827,8 @@ class System(object):
         return self._problem_meta['recording_iter']
 
     @property
-    def _relevant(self):
-        return self._problem_meta['relevant']
+    def _relevance(self):
+        return self._problem_meta['relevance']
 
     @property
     def _static_mode(self):
@@ -2774,6 +2844,30 @@ class System(object):
         True if outside of setup.
         """
         return self._problem_meta is None or self._problem_meta['static_mode']
+
+    @property
+    def _mode(self):
+        """
+        Return the current system mode.
+
+        Returns
+        -------
+        str
+            The current system mode, 'fwd' or 'rev'.
+        """
+        return self._problem_meta['mode']
+
+    @property
+    def _orig_mode(self):
+        """
+        Return the user specified system mode.
+
+        Returns
+        -------
+        str
+            The system mode specified during setup, 'fwd', 'rev', or 'auto'.
+        """
+        return self._problem_meta['orig_mode']
 
     def _set_solver_print(self, level=2, depth=1e99, type_='all'):
         """
@@ -2858,15 +2952,15 @@ class System(object):
         list of str or ()
             List of wrt_matches for a static coloring or () if there isn't one.
         """
-        if (self._coloring_info['coloring'] is not None and
-                self._coloring_info['wrt_matches'] is None):
-            self._update_wrt_matches(self._coloring_info)
+        if (self._coloring_info.coloring is not None and
+                self._coloring_info.wrt_matches is None):
+            self._coloring_info._update_wrt_matches(self)
 
         # if coloring has been specified, we don't want to have multiple
         # approximations for the same subjac, so don't register any new
         # approximations when the wrt matches those used in the coloring.
         if self._get_static_coloring() is not None:  # static coloring has been specified
-            return self._coloring_info['wrt_matches']
+            return self._coloring_info.wrt_matches
 
         return ()  # for dynamic coloring or no coloring
 
@@ -2898,14 +2992,9 @@ class System(object):
                 for sub in s.system_iter(recurse=True, typ=typ):
                     yield sub
 
-    def _solver_subsystem_iter(self, local_only=True):
+    def _all_subsystem_iter(self):
         """
         Do nothing.
-
-        Parameters
-        ----------
-        local_only : bool
-            If True, only iterate over local subsystems.
 
         Returns
         -------
@@ -3017,8 +3106,6 @@ class System(object):
             except ValueError as e:
                 raise ValueError(f"{str(e)[:-1]} for design_var '{name}'.")
 
-        dv = {}
-
         # Convert ref/ref0 to ndarray/float as necessary
         ref = format_as_float_or_array('ref', ref, val_if_none=None, flatten=True)
         ref0 = format_as_float_or_array('ref0', ref0, val_if_none=None, flatten=True)
@@ -3054,35 +3141,36 @@ class System(object):
                 scaler = None
         elif scaler == 1.0:
             scaler = None
-        dv['scaler'] = scaler
-        dv['total_scaler'] = scaler
 
         if isinstance(adder, np.ndarray):
             if not np.any(adder):
                 adder = None
         elif adder == 0.0:
             adder = None
-        dv['adder'] = adder
-        dv['total_adder'] = adder
-
-        dv['name'] = name
-        dv['upper'] = upper
-        dv['lower'] = lower
-        dv['ref'] = ref
-        dv['ref0'] = ref0
-        dv['units'] = units
-        dv['cache_linear_solution'] = cache_linear_solution
 
         if indices is not None:
-            indices, size = self._create_indexer(indices, 'design var', name, flat_src=flat_indices)
-            if size is not None:
-                dv['size'] = size
+            indices, size = self._create_indexer(indices, 'design var', name,
+                                                 flat_src=flat_indices)
+        else:
+            size = None
 
-        dv['indices'] = indices
-        dv['flat_indices'] = flat_indices
-        dv['parallel_deriv_color'] = parallel_deriv_color
-
-        design_vars[name] = dv
+        design_vars[name] = {
+            'adder': adder,
+            'scaler': scaler,
+            'name': name,
+            'upper': upper,
+            'lower': lower,
+            'ref': ref,
+            'ref0': ref0,
+            'units': units,
+            'cache_linear_solution': cache_linear_solution,
+            'total_scaler': scaler,
+            'total_adder': adder,
+            'indices': indices,
+            'flat_indices': flat_indices,
+            'parallel_deriv_color': parallel_deriv_color,
+            'size': size,
+        }
 
     def add_response(self, name, type_, lower=None, upper=None, equals=None,
                      ref=None, ref0=None, indices=None, index=None, units=None,
@@ -3165,16 +3253,14 @@ class System(object):
 
         resp = {}
 
-        typemap = {'con': 'Constraint', 'obj': 'Objective'}
         if (name in self._responses or name in self._static_responses) and alias is None:
+            typemap = {'con': 'Constraint', 'obj': 'Objective'}
             msg = ("{}: {} '{}' already exists. Use the 'alias' argument to apply a second "
                    "constraint".format(self.msginfo, typemap[type_], name))
             raise RuntimeError(msg.format(name))
 
         resp['name'] = name
         resp['alias'] = alias
-        if alias is not None:
-            name = alias
 
         # Convert ref/ref0 to ndarray/float as necessary
         ref = format_as_float_or_array('ref', ref, val_if_none=None, flatten=True)
@@ -3186,12 +3272,11 @@ class System(object):
         # A constraint cannot be an equality and inequality constraint
         if equals is not None and (lower is not None or upper is not None):
             msg = "{}: Constraint '{}' cannot be both equality and inequality."
-            raise ValueError(msg.format(self.msginfo, name))
-
-        if self._static_mode:
-            responses = self._static_responses
-        else:
-            responses = self._responses
+            if alias is not None:
+                namestr = f"'{name}' (alias '{alias}')"
+            else:
+                namestr = name
+            raise ValueError(msg.format(self.msginfo, namestr))
 
         if type_ == 'con':
 
@@ -3273,11 +3358,19 @@ class System(object):
         resp['parallel_deriv_color'] = parallel_deriv_color
         resp['flat_indices'] = flat_indices
 
+        if self._static_mode:
+            responses = self._static_responses
+        else:
+            responses = self._responses
+
         if alias in responses:
             raise TypeError(f"{self.msginfo}: Constraint alias '{alias}' is a duplicate of an "
                             "existing alias or variable name.")
 
-        responses[name] = resp
+        if alias is not None:
+            responses[alias] = resp
+        else:
+            responses[name] = resp
 
     def add_constraint(self, name, lower=None, upper=None, equals=None,
                        ref=None, ref0=None, adder=None, scaler=None, units=None,
@@ -3306,7 +3399,7 @@ class System(object):
             and ref0.
         scaler : float or ndarray, optional
             Value to multiply the model value to get the scaled value for the driver. scaler
-            is second in precedence. adder and scaler are an alterantive to using ref
+            is second in precedence. adder and scaler are an alternative to using ref
             and ref0.
         units : str, optional
             Units to convert to before applying scaling.
@@ -3419,7 +3512,66 @@ class System(object):
                           cache_linear_solution=cache_linear_solution,
                           flat_indices=flat_indices, alias=alias)
 
-    def _check_voi_meta_sizes(self, typename, meta, names):
+    def _update_dv_meta(self, meta, get_size=False, use_prom_ivc=False):
+        """
+        Update the design variable metadata.
+
+        Parameters
+        ----------
+        meta : dict
+            Metadata dictionary that is populated by this method.
+        get_size : bool
+            If True, compute the size and store it in the metadata.
+        use_prom_ivc : bool
+            Determines whether return key is promoted name or source name.
+        """
+        model = self._problem_meta['model_ref']()
+        pro2abs_out = self._var_allprocs_prom2abs_list['output']
+        abs2meta_out = model._var_allprocs_abs2meta['output']
+        prom_name = meta['name']
+
+        if prom_name in pro2abs_out:  # promoted output
+            src_name = pro2abs_out[prom_name][0]
+            meta['orig'] = (prom_name, None)
+
+        else:  # Design variable on an input connected to an ivc.
+            pro2abs_in = self._var_allprocs_prom2abs_list['input']
+            src_name = model._conn_global_abs_in2out[pro2abs_in[prom_name][0]]
+            meta['orig'] = (None, prom_name)
+
+        key = prom_name if use_prom_ivc else src_name
+
+        meta['source'] = src_name
+        meta['distributed'] = \
+            src_name in abs2meta_out and abs2meta_out[src_name]['distributed']
+
+        if get_size:
+            if 'indices' not in meta:
+                meta['indices'] = None
+            abs2idx = model._var_allprocs_abs2idx
+            sizes = model._var_sizes['output']
+
+            if src_name in abs2idx:  # var is continuous
+                vmeta = abs2meta_out[src_name]
+                indices = meta['indices']
+                if indices is not None:
+                    # Index defined in this design var.
+                    # update src shapes for Indexer objects
+                    indices.set_src_shape(vmeta['global_shape'])
+                    indices = indices.shaped_instance()
+                    meta['size'] = meta['global_size'] = indices.indexed_src_size
+                else:
+                    if meta['distributed']:
+                        meta['size'] = sizes[model.comm.rank, abs2idx[src_name]]
+                    else:
+                        meta['size'] = sizes[model._owning_rank[src_name], abs2idx[src_name]]
+                    meta['global_size'] = vmeta['global_size']
+            else:
+                meta['global_size'] = meta['size'] = 0  # discrete var
+
+        return key
+
+    def _check_voi_meta_sizes(self, typename, name, meta, names):
         """
         Check that sizes of named metadata agree with meta['size'].
 
@@ -3427,6 +3579,8 @@ class System(object):
         ----------
         typename : str
             'design var', 'objective', or 'constraint'
+        name : str
+            The name of the variable.  May be an alias.
         meta : dict
             Metadata dictionary.
         names : list of str
@@ -3437,7 +3591,7 @@ class System(object):
             for mname in names:
                 val = meta[mname]
                 if isinstance(val, np.ndarray) and size != val.size:
-                    raise ValueError(f"{self.msginfo}: When adding {typename} '{meta['name']}',"
+                    raise ValueError(f"{self.msginfo}: When adding {typename} '{name}',"
                                      f" {mname} should have size {size} but instead has size "
                                      f"{val.size}.")
 
@@ -3451,12 +3605,12 @@ class System(object):
         Parameters
         ----------
         recurse : bool
-            If True, recurse through the subsystems and return the path of
+            If True, recurse through the subsystems of a group and return the path of
             all design vars relative to the this system.
         get_sizes : bool, optional
             If True, compute the size of each design variable.
         use_prom_ivc : bool
-            Translate auto_ivc_names to their promoted input names.
+            Use promoted names for inputs, else convert to absolute source names.
 
         Returns
         -------
@@ -3464,153 +3618,98 @@ class System(object):
             The design variables defined in the current system and, if
             recurse=True, its subsystems.
         """
-        pro2abs_out = self._var_allprocs_prom2abs_list['output']
-        pro2abs_in = self._var_allprocs_prom2abs_list['input']
+        out = {}
+        try:
+            for name, data in self._design_vars.items():
+                if 'parallel_deriv_color' in data and data['parallel_deriv_color'] is not None:
+                    self._problem_meta['has_par_deriv_color'] = True
+
+                key = self._update_dv_meta(data, get_size=get_sizes,
+                                           use_prom_ivc=use_prom_ivc)
+                if get_sizes and data['source'] in self._var_allprocs_abs2idx:
+                    self._check_voi_meta_sizes(
+                        'design var', name, data,
+                        ['ref', 'ref0', 'scaler', 'adder', 'upper', 'lower'])
+
+                out[key] = data
+
+        except KeyError as err:
+            raise RuntimeError(f"{self.msginfo}: Output not found for design variable {err}.")
+
+        return out
+
+    def _update_response_meta(self, meta, get_size=False, use_prom_ivc=False):
+        """
+        Update the design variable metadata.
+
+        Parameters
+        ----------
+        meta : dict
+            Metadata dictionary.
+        get_size : bool
+            If True, compute the size of each design variable.
+        use_prom_ivc : bool
+            Use promoted names for inputs, else convert to absolute source names.
+        """
+        prom2abs_out = self._var_allprocs_prom2abs_list['output']
+        prom2abs_in = self._var_allprocs_prom2abs_list['input']
         model = self._problem_meta['model_ref']()
         conns = model._conn_global_abs_in2out
         abs2meta_out = model._var_allprocs_abs2meta['output']
 
-        # Human readable error message during Driver setup.
-        out = {}
-        try:
-            for prom_name, data in self._design_vars.items():
-                if 'parallel_deriv_color' in data and data['parallel_deriv_color'] is not None:
-                    self._problem_meta['using_par_deriv_color'] = True
+        alias = meta['alias']
+        prom = meta['name']  # 'usually' a promoted name, but can be absolute
+        if alias is not None:
+            if alias in prom2abs_out or alias in prom2abs_in:
+                # Constraint alias should never be the same as any openmdao variable.
+                path = prom2abs_out[prom][0] if prom in prom2abs_out else prom
+                raise RuntimeError(f"{self.msginfo}: Constraint alias '{alias}' on '{path}'"
+                                   " is the same name as an existing variable.")
+        meta['parent'] = self.pathname
 
-                if prom_name in pro2abs_out:
+        if prom in prom2abs_out:  # promoted output
+            src_name = prom2abs_out[prom][0]
+        elif prom in abs2meta_out:
+            src_name = prom
+        elif prom in prom2abs_in:
+            src_name = conns[prom2abs_in[prom][0]]
+        else:  # abs input
+            src_name = conns[prom][0]
 
-                    # This is an output name, most likely a manual indepvarcomp.
-                    abs_name = pro2abs_out[prom_name][0]
-                    out[abs_name] = data
-                    data['source'] = abs_name
-                    data['orig'] = (prom_name, None)
-                    dist = abs_name in abs2meta_out and abs2meta_out[abs_name]['distributed']
+        if alias:
+            key = alias
+        elif use_prom_ivc:
+            key = prom
+        else:
+            key = src_name
 
-                else:  # assume an input name else KeyError
+        meta['source'] = src_name
+        meta['distributed'] = dist = \
+            src_name in abs2meta_out and abs2meta_out[src_name]['distributed']
 
-                    # Design variable on an input connected to an ivc, so use abs ivc name.
-                    in_abs = pro2abs_in[prom_name][0]
-                    data['source'] = source = conns[in_abs]
-                    data['orig'] = (None, prom_name)
-                    dist = source in abs2meta_out and abs2meta_out[source]['distributed']
-                    if use_prom_ivc:
-                        out[prom_name] = data
-                    else:
-                        out[source] = data
-
-                data['distributed'] = dist
-
-        except KeyError as err:
-            msg = "{}: Output not found for design variable {}."
-            raise RuntimeError(msg.format(self.msginfo, str(err)))
-
-        if get_sizes:
-            # Size them all
+        if get_size:
             sizes = model._var_sizes['output']
             abs2idx = model._var_allprocs_abs2idx
             owning_rank = model._owning_rank
 
-            for name, meta in out.items():
+            if src_name in abs2idx:
+                out_meta = abs2meta_out[src_name]
 
-                src_name = meta['source']
-
-                if 'size' not in meta:
-                    if src_name in abs2idx:
-                        if meta['distributed']:
-                            meta['size'] = sizes[model.comm.rank, abs2idx[src_name]]
-                        else:
-                            meta['size'] = sizes[owning_rank[src_name], abs2idx[src_name]]
-                    else:
-                        meta['size'] = 0  # discrete var, don't know size
-                meta['size'] = int(meta['size'])  # make default int so will be json serializable
-
-                if src_name in abs2idx:  # var is continuous
+                if 'indices' in meta and meta['indices'] is not None:
                     indices = meta['indices']
-                    vmeta = abs2meta_out[src_name]
-                    meta['distributed'] = vmeta['distributed']
-                    if indices is not None:
-                        # Index defined in this design var.
-                        # update src shapes for Indexer objects
-                        indices.set_src_shape(vmeta['global_shape'])
-                        indices = indices.shaped_instance()
-                        meta['size'] = meta['global_size'] = indices.indexed_src_size
-                    else:
-                        meta['global_size'] = vmeta['global_size']
-
-                    self._check_voi_meta_sizes('design var', meta,
-                                               ['ref', 'ref0', 'scaler', 'adder', 'upper', 'lower'])
+                    indices.set_src_shape(out_meta['global_shape'])
+                    indices = indices.shaped_instance()
+                    meta['size'] = meta['global_size'] = indices.indexed_src_size
                 else:
-                    meta['global_size'] = 0  # discrete var
-
-        if recurse:
-            abs2prom_in = self._var_allprocs_abs2prom['input']
-            if (self.comm.size > 1 and self._subsystems_allprocs and
-                    self._mpi_proc_allocator.parallel):
-
-                # For parallel groups, we need to make sure that the design variable dictionary is
-                # assembled in the same order under mpi as for serial runs.
-                out_by_sys = {}
-
-                for subsys in self._sorted_sys_iter():
-                    sub_out = {}
-                    name = subsys.name
-                    dvs = subsys.get_design_vars(recurse=recurse, get_sizes=get_sizes,
-                                                 use_prom_ivc=use_prom_ivc)
-                    if use_prom_ivc:
-                        # have to promote subsystem prom name to this level
-                        sub_pro2abs_in = subsys._var_allprocs_prom2abs_list['input']
-                        for dv, meta in dvs.items():
-                            if dv in sub_pro2abs_in:
-                                abs_dv = sub_pro2abs_in[dv][0]
-                                sub_out[abs2prom_in[abs_dv]] = meta
-                            else:
-                                sub_out[dv] = meta
+                    if dist:
+                        meta['size'] = sizes[self.comm.rank, abs2idx[src_name]]
                     else:
-                        sub_out.update(dvs)
-
-                    out_by_sys[name] = sub_out
-
-                out_by_sys_by_rank = self.comm.allgather(out_by_sys)
-                all_outs_by_sys = {}
-                for outs in out_by_sys_by_rank:
-                    for name, meta in outs.items():
-                        all_outs_by_sys[name] = meta
-
-                for subsys_name in self._sorted_sys_iter_all_procs():
-                    for name, meta in all_outs_by_sys[subsys_name].items():
-                        if name not in out:
-                            out[name] = meta
-
+                        meta['size'] = sizes[owning_rank[src_name], abs2idx[src_name]]
+                    meta['global_size'] = out_meta['global_size']
             else:
+                meta['size'] = meta['global_size'] = 0  # discrete var, don't know size
 
-                for subsys in self._sorted_sys_iter():
-                    dvs = subsys.get_design_vars(recurse=recurse, get_sizes=get_sizes,
-                                                 use_prom_ivc=use_prom_ivc)
-                    if use_prom_ivc:
-                        # have to promote subsystem prom name to this level
-                        sub_pro2abs_in = subsys._var_allprocs_prom2abs_list['input']
-                        for dv, meta in dvs.items():
-                            if dv in sub_pro2abs_in:
-                                abs_dv = sub_pro2abs_in[dv][0]
-                                out[abs2prom_in[abs_dv]] = meta
-                            else:
-                                out[dv] = meta
-                    else:
-                        out.update(dvs)
-
-        if out and self is model:
-            for var, outmeta in out.items():
-                if var in abs2meta_out and "openmdao:allow_desvar" not in abs2meta_out[var]['tags']:
-                    src, tgt = outmeta['orig']
-                    if src is None:
-                        self._collect_error(f"Design variable '{tgt}' is connected to '{var}', but "
-                                            f"'{var}' is not an IndepVarComp or ImplicitComp "
-                                            "output.")
-                    else:
-                        self._collect_error(f"Design variable '{src}' is not an IndepVarComp or "
-                                            "ImplicitComp output.")
-
-        return out
+        return key
 
     def get_responses(self, recurse=True, get_sizes=True, use_prom_ivc=False):
         """
@@ -3637,171 +3736,27 @@ class System(object):
             The responses defined in the current system and, if
             recurse=True, its subsystems.
         """
-        prom2abs_out = self._var_allprocs_prom2abs_list['output']
-        prom2abs_in = self._var_allprocs_prom2abs_list['input']
-        model = self._problem_meta['model_ref']()
-        conns = model._conn_global_abs_in2out
-        abs2meta_out = model._var_allprocs_abs2meta['output']
-
-        # Human readable error message during Driver setup.
+        out = {}
         try:
-            out = {}
             # keys of self._responses are the alias or the promoted name
-            for prom_or_alias, data in self._responses.items():
-                if 'parallel_deriv_color' in data and data['parallel_deriv_color'] is not None:
-                    self._problem_meta['using_par_deriv_color'] = True
+            for name, meta in self._responses.items():
+                if 'parallel_deriv_color' in meta and meta['parallel_deriv_color'] is not None:
+                    self._problem_meta['has_par_deriv_color'] = True
 
-                alias = data['alias']  # may be None
-                prom = data['name']  # always a promoted var name
+                key = self._update_response_meta(meta, get_size=get_sizes,
+                                                 use_prom_ivc=use_prom_ivc)
+                if get_sizes:
+                    self._check_voi_meta_sizes(
+                        resp_types[meta['type']], name, meta, resp_size_checks[meta['type']])
 
-                if alias is not None:
-                    if alias in prom2abs_out or alias in prom2abs_in:
-                        # Constraint alias should never be the same as any openmdao variable.
-                        path = prom2abs_out[prom][0] if prom in prom2abs_out else prom
-                        raise RuntimeError(f"{self.msginfo}: Constraint alias '{alias}' on '{path}'"
-                                           " is the same name as an existing variable.")
-                    data['alias_path'] = self.pathname
-
-                if prom_or_alias in prom2abs_out:
-                    abs_out = prom2abs_out[prom_or_alias][0]
-                    # for outputs, the dict key is always the absolute name of the output
-                    out[abs_out] = data
-                    data['source'] = abs_out
-                    data['distributed'] = \
-                        abs_out in abs2meta_out and abs2meta_out[abs_out]['distributed']
-
-                else:
-                    if prom in prom2abs_out:
-                        src_path = prom2abs_out[prom][0]
-                    else:
-                        src_path = conns[prom2abs_in[prom][0]]
-
-                    distrib = src_path in abs2meta_out and abs2meta_out[src_path]['distributed']
-                    data['source'] = src_path
-                    data['distributed'] = distrib
-
-                    if use_prom_ivc:
-                        # dict key is either an alias or the promoted input name
-                        out[prom_or_alias] = data
-                    else:
-                        # dict key is either an alias or the absolute src name since constraints
-                        # can be specified on inputs.
-                        out[src_path if alias is None else alias] = data
+                out[key] = meta
 
         except KeyError as err:
-            msg = "{}: Output not found for response {}."
-            raise RuntimeError(msg.format(self.msginfo, str(err)))
-
-        if get_sizes:
-            # Size them all
-            sizes = model._var_sizes['output']
-            abs2idx = model._var_allprocs_abs2idx
-            owning_rank = model._owning_rank
-            for response in out.values():
-                name = response['source']
-
-                # Discrete vars
-                if name not in abs2idx:
-                    response['size'] = response['global_size'] = 0  # discrete var, don't know size
-                    continue
-
-                meta = abs2meta_out[name]
-                response['distributed'] = meta['distributed']
-
-                if response['indices'] is not None:
-                    indices = response['indices']
-                    indices.set_src_shape(meta['global_shape'])
-                    indices = indices.shaped_instance()
-                    response['size'] = response['global_size'] = indices.indexed_src_size
-                else:
-                    response['size'] = sizes[owning_rank[name], abs2idx[name]]
-                    response['global_size'] = meta['global_size']
-
-                self._check_voi_meta_sizes(resp_types[response['type']], response,
-                                           resp_size_checks[response['type']])
-
-        if recurse:
-            abs2prom_in = self._var_allprocs_abs2prom['input']
-            if (self.comm.size > 1 and self._subsystems_allprocs and
-                    self._mpi_proc_allocator.parallel):
-
-                # For parallel groups, we need to make sure that the design variable dictionary is
-                # assembled in the same order under mpi as for serial runs.
-                out_by_sys = {}
-
-                for subsys in self._sorted_sys_iter():
-                    name = subsys.name
-                    sub_out = {}
-
-                    resps = subsys.get_responses(recurse=recurse, get_sizes=get_sizes,
-                                                 use_prom_ivc=use_prom_ivc)
-                    if use_prom_ivc:
-                        # have to promote subsystem prom name to this level
-                        sub_pro2abs_in = subsys._var_allprocs_prom2abs_list['input']
-                        for dv, meta in resps.items():
-                            if dv in sub_pro2abs_in:
-                                abs_resp = sub_pro2abs_in[dv][0]
-                                sub_out[abs2prom_in[abs_resp]] = meta
-                            else:
-                                sub_out[dv] = meta
-                    else:
-                        for rkey, rmeta in resps.items():
-                            if rkey in out:
-                                tdict = {'con': 'constraint', 'obj': 'objective'}
-                                rpath = rmeta['alias_path']
-                                rname = '.'.join((rpath, rmeta['name'])) if rpath else rkey
-                                rtype = tdict[rmeta['type']]
-                                ometa = sub_out[rkey]
-                                opath = ometa['alias_path']
-                                oname = '.'.join((opath, ometa['name'])) if opath else ometa['name']
-                                otype = tdict[ometa['type']]
-                                raise NameError(f"The same response alias, '{rkey}' was declared"
-                                                f" for {rtype} '{rname}' and {otype} '{oname}'.")
-                            sub_out[rkey] = rmeta
-
-                    out_by_sys[name] = sub_out
-
-                out_by_sys_by_rank = self.comm.allgather(out_by_sys)
-                all_outs_by_sys = {}
-                for outs in out_by_sys_by_rank:
-                    for name, meta in outs.items():
-                        all_outs_by_sys[name] = meta
-
-                for subsys_name in self._sorted_sys_iter_all_procs():
-                    for name, meta in all_outs_by_sys[subsys_name].items():
-                        out[name] = meta
-
-            else:
-                for subsys in self._sorted_sys_iter():
-                    resps = subsys.get_responses(recurse=recurse, get_sizes=get_sizes,
-                                                 use_prom_ivc=use_prom_ivc)
-                    if use_prom_ivc:
-                        # have to promote subsystem prom name to this level
-                        sub_pro2abs_in = subsys._var_allprocs_prom2abs_list['input']
-                        for dv, meta in resps.items():
-                            if dv in sub_pro2abs_in:
-                                abs_resp = sub_pro2abs_in[dv][0]
-                                out[abs2prom_in[abs_resp]] = meta
-                            else:
-                                out[dv] = meta
-                    else:
-                        for rkey, rmeta in resps.items():
-                            if rkey in out:
-                                tdict = {'con': 'constraint', 'obj': 'objective'}
-                                rpath = rmeta['alias_path']
-                                rname = '.'.join((rpath, rmeta['name'])) if rpath else rkey
-                                rtype = tdict[rmeta['type']]
-                                ometa = out[rkey]
-                                opath = ometa['alias_path']
-                                oname = '.'.join((opath, ometa['name'])) if opath else ometa['name']
-                                otype = tdict[ometa['type']]
-                                raise NameError(f"The same response alias, '{rkey}' was declared"
-                                                f" for {rtype} '{rname}' and {otype} '{oname}'.")
-                            out[rkey] = rmeta
+            raise RuntimeError(f"{self.msginfo}: Output not found for response {err}.")
 
         return out
 
-    def get_constraints(self, recurse=True, get_sizes=True, use_prom_ivc=False):
+    def get_constraints(self, recurse=True, get_sizes=True, use_prom_ivc=True):
         """
         Get the Constraint settings from this system.
 
@@ -3830,7 +3785,7 @@ class System(object):
             if response['type'] == 'con'
         }
 
-    def get_objectives(self, recurse=True, get_sizes=True, use_prom_ivc=False):
+    def get_objectives(self, recurse=True, get_sizes=True, use_prom_ivc=True):
         """
         Get the Objective settings from this system.
 
@@ -3870,7 +3825,7 @@ class System(object):
 
     def get_io_metadata(self, iotypes=('input', 'output'), metadata_keys=None,
                         includes=None, excludes=None, is_indep_var=None, is_design_var=None,
-                        tags=(), get_remote=False, rank=None,
+                        tags=None, get_remote=False, rank=None,
                         return_rel_names=True):
         """
         Retrieve metadata for a filtered list of variables.
@@ -3917,7 +3872,7 @@ class System(object):
             A dict of metadata keyed on name, where name is either absolute or relative
             based on the value of the `return_rel_names` arg, and metadata is a dict containing
             entries based on the value of the metadata_keys arg.  Every metadata dict will
-            always contain two entries, 'promoted_name' and 'discrete', to indicate a given
+            always contain two entries, 'prom_name' and 'discrete', to indicate a given
             variable's promoted name and whether or not it is discrete.
         """
         prefix = self.pathname + '.' if self.pathname else ''
@@ -3938,6 +3893,8 @@ class System(object):
             includes = (includes,)
         if isinstance(excludes, str):
             excludes = (excludes,)
+        if isinstance(tags, str):
+            tags = {tags}
 
         gather_keys = {'val', 'src_indices'}
         need_gather = get_remote and self.comm is not None and self.comm.size > 1
@@ -3957,9 +3914,6 @@ class System(object):
             metadict = all2meta
             disc_metadict = self._var_allprocs_discrete
             need_gather = False  # we can get everything from 'allprocs' dict without gathering
-
-        if tags:
-            tagset = make_set(tags)
 
         result = {}
 
@@ -3998,7 +3952,7 @@ class System(object):
                             try:
                                 ret_meta[key] = meta[key]
                             except KeyError:
-                                ret_meta[key] = 'Unavailable'
+                                ret_meta[key] = NA
 
                 if need_gather:
                     if distrib or abs_name in self._vars_to_gather:
@@ -4068,8 +4022,16 @@ class System(object):
                             continue
 
                     # handle tags
-                    if tags and not tagset & ret_meta['tags']:
-                        continue
+                    if tags:
+                        meta_tags = ret_meta.get('tags', {})
+                        match_tag = False
+                        for tag in tags:
+                            for meta_tag in meta_tags:
+                                if fnmatchcase(meta_tag, tag):
+                                    match_tag = True
+                                    break
+                        if not match_tag:
+                            continue
 
                     ret_meta['prom_name'] = prom
                     ret_meta['discrete'] = abs_name not in all2meta[iotype]
@@ -4081,6 +4043,230 @@ class System(object):
 
         return result
 
+    def list_vars(self,
+                  val=True,
+                  prom_name=True,
+                  residuals=False,
+                  residuals_tol=None,
+                  units=False,
+                  shape=False,
+                  global_shape=False,
+                  bounds=False,
+                  scaling=False,
+                  desc=False,
+                  print_arrays=False,
+                  tags=None,
+                  print_tags=False,
+                  includes=None,
+                  excludes=None,
+                  is_indep_var=None,
+                  is_design_var=None,
+                  all_procs=False,
+                  list_autoivcs=False,
+                  out_stream=_DEFAULT_OUT_STREAM,
+                  print_min=False,
+                  print_max=False,
+                  return_format='list'):
+        """
+        Write a list of inputs and outputs sorted by component in execution order.
+
+        Parameters
+        ----------
+        val : bool, optional
+            When True, display output values. Default is True.
+        prom_name : bool, optional
+            When True, display the promoted name of the variable.
+            Default is True.
+        residuals : bool, optional
+            When True, display residual values. Default is False.
+        residuals_tol : float, optional
+            If set, limits the output of list_outputs to only variables where
+            the norm of the resids array is greater than the given 'residuals_tol'.
+            Default is None.
+        units : bool, optional
+            When True, display units. Default is False.
+        shape : bool, optional
+            When True, display/return the shape of the value. Default is False.
+        global_shape : bool, optional
+            When True, display/return the global shape of the value. Default is False.
+        bounds : bool, optional
+            When True, display/return bounds (lower and upper). Default is False.
+        scaling : bool, optional
+            When True, display/return scaling (ref, ref0, and res_ref). Default is False.
+        desc : bool, optional
+            When True, display/return description. Default is False.
+        print_arrays : bool, optional
+            When False, in the columnar display, just display norm of any ndarrays with size > 1.
+            The norm is surrounded by vertical bars to indicate that it is a norm.
+            When True, also display full values of the ndarray below the row. Format  is affected
+            by the values set with numpy.set_printoptions
+            Default is False.
+        tags : str or list of strs
+            User defined tags that can be used to filter what gets listed. Only outputs with the
+            given tags will be listed.
+            Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display.
+        includes : None, str, or iter of str
+            Collection of glob patterns for pathnames of variables to include. Default is None,
+            which includes all output variables.
+        excludes : None, str, or iter of str
+            Collection of glob patterns for pathnames of variables to exclude. Default is None.
+        is_indep_var : bool or None
+            If None (the default), do no additional filtering of the inputs.
+            If True, list only outputs tagged `openmdao:indep_var`.
+            If False, list only outputs that are _not_ tagged `openmdao:indep_var`.
+        is_design_var : bool or None
+            If None (the default), do no additional filtering of the inputs.
+            If True, list only inputs connected to outputs that are driver design variables.
+            If False, list only inputs _not_ connected to outputs that are driver design variables.
+        all_procs : bool, optional
+            When True, display output on all processors. Default is False.
+        list_autoivcs : bool
+            If True, include auto_ivc outputs in the listing.  Defaults to False.
+        out_stream : file-like
+            Where to send human readable output. Default is sys.stdout.
+            Set to None to suppress.
+        print_min : bool
+            When true, if the output value is an array, print its smallest value.
+        print_max : bool
+            When true, if the output value is an array, print its largest value.
+        return_format : str
+            Indicates the desired format of the return value. Can have value of 'list' or 'dict'.
+            If 'list', the return value is a list of (name, metadata) tuples.
+            if 'dict', the return value is a dictionary mapping {name: metadata}.
+
+        Returns
+        -------
+        list of (name, metadata) or dict of {name: metadata}
+            List or dict of output names and other optional information about those outputs.
+        """
+        if (self._problem_meta is None or
+                self._problem_meta['setup_status'] < _SetupStatus.POST_FINAL_SETUP) and val:
+            issue_warning("Calling `list_vars` before `final_setup` will only "
+                          "display the default values of variables and will not show the result of "
+                          "any `set_val` calls.")
+
+        if return_format not in ('list', 'dict'):
+            badarg = f"'{return_format}'" if isinstance(return_format, str) else f"{return_format}"
+            raise ValueError(f"Invalid value ({badarg}) for return_format, "
+                             "must be a string value of 'list' or 'dict'")
+
+        keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
+        keyflags = [val, units, shape, global_shape, desc, tags or print_tags]
+
+        keys = [name for i, name in enumerate(keynames) if keyflags[i]]
+
+        if bounds:
+            keys.extend(('lower', 'upper'))
+        if scaling:
+            keys.extend(('ref', 'ref0', 'res_ref'))
+
+        outputs = self.get_io_metadata(('output',), keys, includes, excludes,
+                                       is_indep_var, is_design_var, tags,
+                                       get_remote=True,
+                                       rank=None if all_procs or val or residuals else 0,
+                                       return_rel_names=False)
+
+        metavalues = val and self._inputs is None
+
+        keyvals = [metavalues, units, shape, global_shape, desc, tags or print_tags]
+        keys = [n for i, n in enumerate(keynames) if keyvals[i]]
+
+        inputs = self.get_io_metadata(('input',), keys, includes, excludes,
+                                      is_indep_var, is_design_var, tags,
+                                      get_remote=True,
+                                      rank=None if all_procs or val else 0,
+                                      return_rel_names=False)
+
+        # filter auto_ivcs if requested
+        if outputs and not list_autoivcs:
+            outputs = {n: m for n, m in outputs.items() if not n.startswith('_auto_ivc.')}
+
+        # get values & resids
+        if self._outputs is not None and (val or residuals or residuals_tol):
+            to_remove = []
+            print_options = np.get_printoptions()
+            np_precision = print_options['precision']
+
+            for name, meta in outputs.items():
+                if val:
+                    # we want value from the input vector, not from the metadata
+                    meta['val'] = self._abs_get_val(name, get_remote=True,
+                                                    rank=None if all_procs else 0, kind='output')
+
+                    if isinstance(meta['val'], np.ndarray):
+                        if print_min:
+                            meta['min'] = np.round(np.min(meta['val']), np_precision)
+
+                        if print_max:
+                            meta['max'] = np.round(np.max(meta['val']), np_precision)
+
+                if residuals or residuals_tol:
+                    resids = self._abs_get_val(name, get_remote=True,
+                                               rank=None if all_procs else 0,
+                                               kind='residual')
+                    if residuals_tol and np.linalg.norm(resids) < residuals_tol:
+                        to_remove.append(name)
+                    elif residuals:
+                        meta['resids'] = resids
+
+            # remove any outputs that don't pass the residuals_tol filter
+            for name in to_remove:
+                del outputs[name]
+
+        if val and self._inputs is not None:
+            # we want value from the input vector, not from the metadata
+            print_options = np.get_printoptions()
+            np_precision = print_options['precision']
+
+            for n, meta in inputs.items():
+                meta['val'] = self._abs_get_val(n, get_remote=True,
+                                                rank=None if all_procs else 0, kind='input')
+                if isinstance(meta['val'], np.ndarray):
+                    if print_min:
+                        meta['min'] = np.round(np.min(meta['val']), np_precision)
+
+                    if print_max:
+                        meta['max'] = np.round(np.max(meta['val']), np_precision)
+
+        # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
+        if not (outputs or inputs) or (not all_procs and self.comm.rank != 0):
+            return {} if return_format == 'dict' else []
+
+        # remove metadata we don't want to show/return
+        to_remove = ['discrete']
+        if not print_tags:
+            to_remove.append('tags')
+        if not prom_name:
+            to_remove.append('prom_name')
+        for _, meta in chain(outputs.items(), inputs.items()):
+            for key in to_remove:
+                try:
+                    del meta[key]
+                except KeyError:
+                    pass
+
+        variables = set(outputs.keys()).union(set(inputs.keys()))
+        var_list = []
+        var_dict = {}
+
+        var_list = self._get_vars_exec_order(inputs=True, outputs=True,
+                                             variables=variables, local=True)
+        for var_name in var_list:
+            if var_name in outputs:
+                var_dict[var_name] = outputs[var_name]
+                var_dict[var_name]['io'] = 'output'
+            else:
+                var_dict[var_name] = inputs[var_name]
+                var_dict[var_name]['io'] = 'input'
+
+        if all_procs or self.comm.rank == 0:
+            write_var_table(self.pathname, var_list, 'all', var_dict,
+                            True, print_arrays, out_stream)
+
+        return var_dict if return_format == 'dict' else list(var_dict.items())
+
     def list_inputs(self,
                     val=True,
                     prom_name=True,
@@ -4091,6 +4277,7 @@ class System(object):
                     hierarchical=True,
                     print_arrays=False,
                     tags=None,
+                    print_tags=False,
                     includes=None,
                     excludes=None,
                     is_indep_var=None,
@@ -4130,6 +4317,8 @@ class System(object):
             User defined tags that can be used to filter what gets listed. Only inputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display.
         includes : None, str, or iter of str
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all input variables.
@@ -4170,14 +4359,13 @@ class System(object):
                           "any `set_val` calls.")
 
         if return_format not in ('list', 'dict'):
-            badarg = f"'{return_format}'" if isinstance(return_format, str) else f"{return_format}"
-            raise ValueError(f"Invalid value ({badarg}) for return_format, "
+            raise ValueError(f"Invalid value ({return_format}) for return_format, "
                              "must be a string value of 'list' or 'dict'")
 
         metavalues = val and self._inputs is None
 
         keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyvals = [metavalues, units, shape, global_shape, desc, tags is not None]
+        keyvals = [metavalues, units, shape, global_shape, desc, tags or print_tags]
         keys = [n for i, n in enumerate(keynames) if keyvals[i]]
 
         inputs = self.get_io_metadata(('input',), keys, includes, excludes,
@@ -4185,16 +4373,6 @@ class System(object):
                                       get_remote=True,
                                       rank=None if all_procs or val else 0,
                                       return_rel_names=False)
-
-        if inputs:
-            to_remove = ['discrete']
-            if tags:
-                to_remove.append('tags')
-            if not prom_name:
-                to_remove.append('prom_name')
-            for _, meta in inputs.items():
-                for key in to_remove:
-                    del meta[key]
 
         if val and self._inputs is not None:
             # we want value from the input vector, not from the metadata
@@ -4211,11 +4389,21 @@ class System(object):
                     if print_max:
                         meta['max'] = np.round(np.max(meta['val']), np_precision)
 
+        # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
         if not inputs or (not all_procs and self.comm.rank != 0):
-            if return_format == 'dict':
-                return {}
-            else:
-                return []
+            return {} if return_format == 'dict' else []
+
+        to_remove = ['discrete']
+        if not print_tags:
+            to_remove.append('tags')
+        if not prom_name:
+            to_remove.append('prom_name')
+        for _, meta in inputs.items():
+            for key in to_remove:
+                try:
+                    del meta[key]
+                except KeyError:
+                    pass
 
         if out_stream:
             self._write_table('input', inputs, hierarchical, print_arrays, all_procs,
@@ -4228,10 +4416,7 @@ class System(object):
         else:
             inputs = list(inputs.items())
 
-        if return_format == 'dict':
-            return dict(inputs)
-        else:
-            return inputs
+        return dict(inputs) if return_format == 'dict' else inputs
 
     def list_outputs(self,
                      explicit=True, implicit=True,
@@ -4248,6 +4433,7 @@ class System(object):
                      hierarchical=True,
                      print_arrays=False,
                      tags=None,
+                     print_tags=False,
                      includes=None,
                      excludes=None,
                      is_indep_var=None,
@@ -4302,6 +4488,8 @@ class System(object):
             User defined tags that can be used to filter what gets listed. Only outputs with the
             given tags will be listed.
             Default is None, which means there will be no filtering based on tags.
+        print_tags : bool
+            When true, display tags in the columnar display.
         includes : None, str, or iter of str
             Collection of glob patterns for pathnames of variables to include. Default is None,
             which includes all output variables.
@@ -4342,7 +4530,7 @@ class System(object):
                              "must be a string value of 'list' or 'dict'")
 
         keynames = ['val', 'units', 'shape', 'global_shape', 'desc', 'tags']
-        keyflags = [val, units, shape, global_shape, desc, tags]
+        keyflags = [val, units, shape, global_shape, desc, tags or print_tags]
 
         keys = [name for i, name in enumerate(keynames) if keyflags[i]]
 
@@ -4395,17 +4583,20 @@ class System(object):
 
         # NOTE: calls to _abs_get_val() above are collective calls and must be done on all procs
         if not outputs or (not all_procs and self.comm.rank != 0):
-            return []
+            return {} if return_format == 'dict' else []
 
         # remove metadata we don't want to show/return
         to_remove = ['discrete']
-        if tags:
+        if not print_tags:
             to_remove.append('tags')
         if not prom_name:
             to_remove.append('prom_name')
         for _, meta in outputs.items():
             for key in to_remove:
-                del meta[key]
+                try:
+                    del meta[key]
+                except KeyError:
+                    pass
 
         rel_idx = len(self.pathname) + 1 if self.pathname else 0
 
@@ -4450,10 +4641,7 @@ class System(object):
         else:
             raise RuntimeError('You have excluded both Explicit and Implicit components.')
 
-        if return_format == 'dict':
-            return dict(outputs)
-        else:
-            return outputs
+        return dict(outputs) if return_format == 'dict' else outputs
 
     def _write_table(self, var_type, var_data, hierarchical, print_arrays, all_procs, out_stream):
         """
@@ -4484,18 +4672,16 @@ class System(object):
 
         if self._outputs is None:
             var_list = var_data.keys()
-            top_name = self.name
         else:
             inputs = var_type == 'input'
             outputs = not inputs
             var_list = self._get_vars_exec_order(inputs=inputs, outputs=outputs, variables=var_data)
-            top_name = self.name if self.name else 'model'
 
         if all_procs or self.comm.rank == 0:
             write_var_table(self.pathname, var_list, var_type, var_data,
-                            hierarchical, top_name, print_arrays, out_stream)
+                            hierarchical, print_arrays, out_stream)
 
-    def _get_vars_exec_order(self, inputs=False, outputs=False, variables=None):
+    def _get_vars_exec_order(self, inputs=False, outputs=False, variables=None, local=False):
         """
         Get list of variable names in execution order, based on the order subsystems were setup.
 
@@ -4508,6 +4694,8 @@ class System(object):
         variables : Collection (list or dict)
             Absolute path names of the subset of variables to include.
             If None then all variables will be included. Default is None.
+        local : bool, optional
+            Get variables from local subsystems only. Default is False.
 
         Returns
         -------
@@ -4519,26 +4707,35 @@ class System(object):
         real_vars = self._var_allprocs_abs2meta
         disc_vars = self._var_allprocs_discrete
 
-        in_or_out = []
+        # variable order: real inputs, real outputs, discrete inputs, discrete outputs
+        var_dicts = []
         if inputs:
-            in_or_out.append('input')
+            var_dicts.append(real_vars['input'])
         if outputs:
-            in_or_out.append('output')
+            var_dicts.append(real_vars['output'])
+        if inputs:
+            var_dicts.append(disc_vars['input'])
+        if outputs:
+            var_dicts.append(disc_vars['output'])
 
+        # For components with no children, self._subsystems_allprocs is empty.
         if self._subsystems_allprocs:
-            for subsys, _ in self._subsystems_allprocs.values():
+            if local:
+                from openmdao.core.component import Component
+                it = self.system_iter(recurse=True, typ=Component)
+            else:
+                it = iter(subsys for subsys, _ in self._subsystems_allprocs.values())
+
+            for subsys in it:
                 prefix = subsys.pathname + '.'
-                for io in in_or_out:
-                    for var_name in chain(real_vars[io], disc_vars[io]):
-                        if variables is None or var_name in variables:
-                            if var_name.startswith(prefix):
-                                var_list.append(var_name)
-        else:
-            # For components with no children, self._subsystems_allprocs is empty.
-            for io in in_or_out:
-                for var_name in chain(real_vars[io], disc_vars[io]):
+                for var_name in chain(*var_dicts):
                     if not variables or var_name in variables:
-                        var_list.append(var_name)
+                        if var_name.startswith(prefix):
+                            var_list.append(var_name)
+        else:
+            for var_name in chain(*var_dicts):
+                if variables is None or var_name in variables:
+                    var_list.append(var_name)
 
         return var_list
 
@@ -4569,7 +4766,7 @@ class System(object):
             If None, all are in the scope.
         """
         with self._scaled_context_all():
-            self._apply_linear(None, ContainsAll(), mode, scope_out, scope_in)
+            self._apply_linear(None, mode, scope_out, scope_in)
 
     def run_solve_linear(self, mode):
         """
@@ -4583,7 +4780,7 @@ class System(object):
             'fwd' or 'rev'.
         """
         with self._scaled_context_all():
-            self._solve_linear(mode, ContainsAll())
+            self._solve_linear(mode)
 
     def run_linearize(self, sub_do_ln=True):
         """
@@ -4597,8 +4794,8 @@ class System(object):
             Flag indicating if the children should call linearize on their linear solvers.
         """
         with self._scaled_context_all():
-            do_ln = self._linear_solver is not None and self._linear_solver._linearize_children()
-            self._linearize(self._assembled_jac, sub_do_ln=do_ln)
+            self._linearize(self._assembled_jac, sub_do_ln=self._linear_solver is not None and
+                            self._linear_solver._linearize_children())
             if self._linear_solver is not None and sub_do_ln:
                 self._linear_solver._linearize()
 
@@ -4630,7 +4827,7 @@ class System(object):
         """
         return True
 
-    def _apply_linear(self, jac, rel_systems, mode, scope_in=None, scope_out=None):
+    def _apply_linear(self, jac, mode, scope_in=None, scope_out=None):
         """
         Compute jac-vec product. The model is assumed to be in a scaled state.
 
@@ -4638,8 +4835,6 @@ class System(object):
         ----------
         jac : Jacobian or None
             If None, use local jacobian, else use assembled jacobian jac.
-        rel_systems : set of str
-            Set of names of relevant systems based on the current linear solve.
         mode : str
             'fwd' or 'rev'.
         scope_out : set or None
@@ -4651,7 +4846,7 @@ class System(object):
         """
         raise NotImplementedError(self.msginfo + ": _apply_linear has not been overridden")
 
-    def _solve_linear(self, mode, rel_systems, scope_out=_UNDEFINED, scope_in=_UNDEFINED):
+    def _solve_linear(self, mode, scope_out=_UNDEFINED, scope_in=_UNDEFINED):
         """
         Apply inverse jac product. The model is assumed to be in a scaled state.
 
@@ -4659,8 +4854,6 @@ class System(object):
         ----------
         mode : str
             'fwd' or 'rev'.
-        rel_systems : set of str
-            Set of names of relevant systems based on the current linear solve.
         scope_out : set, None, or _UNDEFINED
             Outputs relevant to possible lower level calls to _apply_linear on Components.
         scope_in : set, None, or _UNDEFINED
@@ -4679,7 +4872,7 @@ class System(object):
         sub_do_ln : bool
             Flag indicating if the children should call linearize on their linear solvers.
         """
-        pass
+        raise NotImplementedError(self.msginfo + ": _linearize has not been overridden")
 
     def _list_states(self):
         """
@@ -4812,7 +5005,7 @@ class System(object):
             if s._nonlinear_solver:
                 nl = s._nonlinear_solver
                 nl._iter_count = 0
-                if hasattr(nl, 'linesearch') and nl.linesearch:
+                if nl.linesearch:
                     nl.linesearch._iter_count = 0
 
     def get_reports_dir(self):
@@ -4827,6 +5020,25 @@ class System(object):
             The path to the directory where reports should be written.
         """
         return self._problem_meta['reports_dir']
+
+    def get_outputs_dir(self, *subdirs, mkdir=True):
+        """
+        Get the path under which all output files of this system are to be placed.
+
+        Parameters
+        ----------
+        *subdirs : str
+            Subdirectories nested under the relevant problem output directory.
+            To create {prob_output_dir}/a/b one would pass `system.get_outputs_dir('a', 'b')`.
+        mkdir : bool
+            If True, attempt to create this directory if it does not exist.
+
+        Returns
+        -------
+        pathlib.Path
+           The path of the outputs directory for the problem.
+        """
+        return _get_outputs_dir(self, *subdirs, mkdir=mkdir)
 
     def _set_finite_difference_mode(self, active):
         """
@@ -4868,13 +5080,13 @@ class System(object):
             if self.linear_solver:
                 self.linear_solver._set_complex_step_mode(active)
 
-            if self._owns_approx_jac:
+            if isinstance(self._jacobian, Jacobian):
                 self._jacobian.set_complex_step_mode(active)
 
             if self._assembled_jac:
                 self._assembled_jac.set_complex_step_mode(active)
 
-        for sub in self.system_iter(include_self=False, recurse=True):
+        for sub in self._subsystems_myproc:
             sub._set_complex_step_mode(active)
 
     def cleanup(self):
@@ -5223,26 +5435,28 @@ class System(object):
         indices : int or list of ints or tuple of ints or int ndarray or Iterable or None, optional
             Indices or slice to set.
         """
-        model = self._problem_meta['model_ref']()
-        conns = model._conn_global_abs_in2out
-        post_setup = self._problem_meta['setup_status'] >= _SetupStatus.POST_SETUP
+        post_setup = self._problem_meta is not None and \
+            self._problem_meta['setup_status'] >= _SetupStatus.POST_SETUP
+        if post_setup:
+            abs_names = name2abs_names(self, name)
+        else:
+            raise RuntimeError(f"{self.msginfo}: Called set_val({name}, ...) before setup "
+                               "completes.")
+
         has_vectors = self._problem_meta['setup_status'] >= _SetupStatus.POST_FINAL_SETUP
         value = val
+
+        model = self._problem_meta['model_ref']()
+        conns = model._conn_global_abs_in2out
 
         all_meta = model._var_allprocs_abs2meta
         loc_meta = model._var_abs2meta
         n_proms = 0  # if nonzero, name given was promoted input name w/o a matching prom output
 
         try:
-            ginputs = model._group_inputs
+            ginputs = self._group_inputs
         except AttributeError:
-            ginputs = {}  # could happen if top level system is not a Group
-
-        if post_setup:
-            abs_names = name2abs_names(self, name)
-        else:
-            raise RuntimeError(f"{self.msginfo}: Called set_val({name}, ...) before setup "
-                               "completes.")
+            ginputs = {}  # could happen if this system is not a Group
 
         if abs_names:
             n_proms = len(abs_names)  # for output this will never be > 1
@@ -5285,9 +5499,9 @@ class System(object):
                         elif tunits is not None:
                             value = model.convert_from_units(src, value, tunits)
                         else:
-                            msg = f"A value with no units has been specified for input " + \
+                            msg = "A value with no units has been specified for input " + \
                                   f"'{name}', but the source ('{src}') has units '{sunits}'. " + \
-                                  f"No unit checking can be done."
+                                  "No unit checking can be done."
                             issue_warning(msg, prefix=self.msginfo, category=UnitsWarning)
                 else:
                     if gunits is None:
@@ -5391,9 +5605,11 @@ class System(object):
                                     model._outputs.set_var(src, value, src_indices.apply(indices),
                                                            True, var_name=var_name)
                         else:
-                            raise RuntimeError(f"{model.msginfo}: Can't set {abs_name}: remote"
-                                               " connected inputs with src_indices currently not"
-                                               " supported.")
+                            issue_warning(f"{model.msginfo}: Cannot set the value of '{abs_name}':"
+                                          " Setting the value of a remote connected input with"
+                                          " src_indices is currently not supported, you must call"
+                                          " `run_model()` to have the outputs populate their"
+                                          " corresponding inputs.")
                     else:
                         value = np.asarray(value)
                         if indices is not _full_slice:
@@ -5569,10 +5785,10 @@ class System(object):
                 if vshape is not None:
                     val = val.reshape(vshape)
             else:
+                var_idx = self._var_allprocs_abs2idx[src]
+                sizes = self._var_sizes['output'][:, var_idx]
                 if distrib and (sdistrib or dynshape or not slocal) and not get_remote:
-                    var_idx = self._var_allprocs_abs2idx[src]
                     # sizes for src var in each proc
-                    sizes = self._var_sizes['output'][:, var_idx]
                     start = np.sum(sizes[:self.comm.rank])
                     end = start + sizes[self.comm.rank]
                     src_indices = src_indices.shaped_array(copy=True)
@@ -5972,7 +6188,13 @@ class System(object):
         for key in sorted(self._conn_global_abs_in2out):
             data.append(self._conn_global_abs_in2out[key])
 
-        return hashlib.md5(str(data).encode()).hexdigest()  # nosec: content not sensitive
+        try:
+            hash = hashlib.md5(str(data).encode(),
+                               usedforsecurity=False).hexdigest()  # nosec: content not sensitive
+        except TypeError:
+            hash = hashlib.md5(str(data).encode()).hexdigest()  # nosec: content not sensitive
+
+        return hash
 
     def _get_full_dist_shape(self, abs_name, local_shape):
         """
@@ -6002,7 +6224,7 @@ class System(object):
         else:
             io = 'input'
             scope = self
-        # io = 'output' if abs_name in self._var_allprocs_abs2meta['output'] else 'input'
+
         meta = scope._var_allprocs_abs2meta[io][abs_name]
         var_idx = scope._var_allprocs_abs2idx[abs_name]
         global_size = np.sum(scope._var_sizes[io][:, var_idx])
@@ -6015,12 +6237,13 @@ class System(object):
             # to avoid a confusing KeyError
             return (0,)
         high_dims = shape[1:]
+        sz = shape_to_len(shape)
         with multi_proc_exception_check(self.comm):
             if high_dims:
                 high_size = shape_to_len(high_dims)
 
                 dim_size_match = bool(global_size % high_size == 0)
-                if dim_size_match is False:
+                if dim_size_match is False and sz > 0:
                     raise RuntimeError(f"{self.msginfo}: All but the first dimension of the "
                                        "shape's local parts in a distributed variable must match "
                                        f"across processes. For output '{abs_name}', local shape "
@@ -6161,7 +6384,7 @@ class System(object):
         abs_vnames : list of str
             List of absolute variable names.
         io : str
-            'input' or 'output'
+            'in' or 'out'
 
         Returns
         -------
@@ -6291,3 +6514,158 @@ class System(object):
 
             for s in self._subsystems_myproc:
                 yield from s.comm_info_iter()
+
+    def dist_size_iter(self, io, top_comm):
+        """
+        Yield names and distributed ranges of all local and remote variables in this system.
+
+        Parameters
+        ----------
+        io : str
+            Either 'input' or 'output'.
+        top_comm : MPI.Comm or None
+            The top-level MPI communicator.
+
+        Yields
+        ------
+        tuple
+            A tuple of the form ((abs_name, rank), start, end).
+        """
+        sizes = self._var_sizes
+        vmeta = self._var_allprocs_abs2meta
+
+        topranks = np.arange(top_comm.size)
+
+        myrank = self.comm.rank
+        toprank = top_comm.rank
+
+        mytopranks = topranks[toprank - myrank: toprank - myrank + self.comm.size]
+
+        for rank in range(self.comm.size):
+            for ivar, vname in enumerate(vmeta[io]):
+                sz = sizes[io][rank, ivar]
+                if sz > 0:
+                    yield (vname, mytopranks[rank]), sz
+
+    def local_range_iter(self, io):
+        """
+        Yield names and local ranges of all local variables in this system.
+
+        Parameters
+        ----------
+        io : str
+            Either 'input' or 'output'.
+
+        Yields
+        ------
+        tuple
+            A tuple of the form (abs_name, start, end).
+        """
+        vmeta = self._var_allprocs_abs2meta
+
+        offset = 0
+        for vname, size in zip(vmeta[io], self._var_sizes[io][self.comm.rank]):
+            if size > 0:
+                yield vname, offset, offset + size
+            offset += size
+
+    def get_var_dup_info(self, name, io):
+        """
+        Return information about how the given variable is duplicated across MPI processes.
+
+        Parameters
+        ----------
+        name : str
+            Name of the variable.
+        io : str
+            Either 'input' or 'output'.
+
+        Returns
+        -------
+        tuple
+            A tuple of the form (is_duplicated, num_zeros, is_distributed).
+        """
+        nz = np.count_nonzero(self._var_sizes[io][:, self._var_allprocs_abs2idx[name]])
+
+        if self._var_allprocs_abs2meta[io][name]['distributed']:
+            return False, self._var_sizes[io].shape[0] - nz, True  # distributed vars are never dups
+
+        return nz > 1, self._var_sizes[io].shape[0] - nz, False
+
+    def get_var_sizes(self, name, io):
+        """
+        Return the sizes of the given variable on all procs.
+
+        Parameters
+        ----------
+        name : str
+            Name of the variable.
+        io : str
+            Either 'input' or 'output'.
+
+        Returns
+        -------
+        ndarray
+            Array of sizes of the variable on all procs.
+        """
+        return self._var_sizes[io][:, self._var_allprocs_abs2idx[name]]
+
+    def _sys_tree_visitor(self, func, predicate=None, recurse=True, include_self=True,
+                          yield_none=False, *args, **kwargs):
+        """
+        Yield the result of applying the given function to each System that satisfies the predicate.
+
+        The object yielded must be picklable if any System is running in a different process.
+
+        Parameters
+        ----------
+        func : callable
+            A callable that takes a System and args and kwargs and returns an object.
+        predicate : callable or None
+            A callable that takes a System as its only argument and returns -1, 0, or 1.
+            If it returns 1, apply the function to the system.
+            If it returns 0, don't apply the function, but continue on to the system's subsystems.
+            If it returns -1, don't apply the function and don't continue on to the system's
+            subsystems.
+            If predicate is None, the function is always applied.
+        recurse : bool
+            If True, function is applied to all subsystems of subsystems.
+        include_self : bool
+            If True, apply the function to the Group itself.
+        yield_none : bool
+            If False, don't yield None results.
+        args : tuple
+            Additional positional args to be passed to the function.
+        kwargs : dict
+            Additional keyword args to be passed to the function.
+
+        Yields
+        ------
+        object
+            The result of the function.
+        """
+        if include_self:
+            pred = 1 if predicate is None else predicate(self)
+            if pred == 1:
+                if yield_none:
+                    yield func(self, *args, **kwargs)
+                else:
+                    res = func(self, *args, **kwargs)
+                    if res is not None:
+                        yield res
+            elif pred == -1:
+                return
+
+        if recurse:
+            for s in self._subsystems_myproc:
+                yield from s._sys_tree_visitor(func, predicate, recurse=True, include_self=True,
+                                               *args, **kwargs)
+        else:
+            for s in self._subsystems_myproc:
+                if pred is None or predicate(s) == 1:
+                    if yield_none:
+                        yield func(s, *args, **kwargs)
+                    else:
+                        res = func(s, *args, **kwargs)
+                        if res is not None:
+                            yield res

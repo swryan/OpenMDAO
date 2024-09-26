@@ -10,7 +10,7 @@ from scipy.optimize import fsolve
 import openmdao.api as om
 from openmdao.components.external_code_comp import STDOUT
 
-from openmdao.utils.assert_utils import assert_near_equal, assert_warning
+from openmdao.utils.assert_utils import assert_near_equal
 
 DIRECTORY = os.path.dirname((os.path.abspath(__file__)))
 
@@ -278,7 +278,8 @@ class ParaboloidExternalCodeComp(om.ExternalCodeComp):
         #     sys.executable, 'extcode_paraboloid.py', self.input_file, self.output_file
         # ]
 
-        self.options['command'] = ('python extcode_paraboloid.py {} {}').format(self.input_file, self.output_file)
+        self.options['command'] = ('{} extcode_paraboloid.py {} {}').format(
+                                   sys.executable, self.input_file, self.output_file)
 
     def compute(self, inputs, outputs):
         x = inputs['x'].item()

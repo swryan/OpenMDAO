@@ -44,7 +44,7 @@ class TestLoadCase(unittest.TestCase):
         prob.run_driver()
         prob.cleanup()
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         system_cases = cr.list_cases('root', out_stream=None)
         case = cr.get_case(system_cases[0])
@@ -75,7 +75,7 @@ class TestLoadCase(unittest.TestCase):
         prob.run_driver()
         prob.cleanup()
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         system_cases = cr.list_cases('root', out_stream=None)
         case = cr.get_case(system_cases[0])
@@ -112,7 +112,7 @@ class TestLoadCase(unittest.TestCase):
         prob.run_driver()
         prob.cleanup()
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         system_cases = cr.list_cases('root', out_stream=None)
         case = cr.get_case(system_cases[0])
@@ -146,7 +146,7 @@ class TestLoadCase(unittest.TestCase):
         prob.run_driver()
         prob.cleanup()
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         system_cases = cr.list_cases('root.d2', out_stream=None)
         case = cr.get_case(system_cases[0])
@@ -182,7 +182,7 @@ class TestLoadCase(unittest.TestCase):
         prob.setup()
         prob.run_model()
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         system_cases = cr.list_cases('root', out_stream=None)
         case = cr.get_case(system_cases[0])
@@ -217,6 +217,56 @@ class TestLoadCase(unittest.TestCase):
 
         self.assertEqual(convert_units(10., from_units, to_units), 10000./3600.)
 
+    def test_load_system_with_discrete_values(self):
+        # Defines a test class with discrete inputs and outputs
+        class ParaboloidWithDiscreteOutput(Paraboloid):
+
+            def setup(self):
+                super().setup()
+                self.add_discrete_input('disc_in', val='in')
+                self.add_discrete_output('disc_out', val='out')
+                self.add_design_var('x', lower=-50, upper=50)
+                self.add_design_var('y', lower=-50, upper=50)
+                self.add_objective('f_xy')
+
+            def compute(self, inputs, outputs, d_ins, d_outs):
+                super().compute(inputs, outputs)
+
+            def compute_partials(self, inputs, outputs, d_ins):
+                super().compute_partials(inputs, outputs)
+
+
+        # Setup the optimization 
+        prob = om.Problem() 
+        prob.model.add_subsystem(
+            'paraboloid', ParaboloidWithDiscreteOutput())
+        prob.driver = om.ScipyOptimizeDriver() 
+        prob.driver.options['optimizer'] = 'SLSQP'
+
+        # Setup Recorder
+        prob.model.recording_options['record_inputs'] = True
+        prob.model.recording_options['record_outputs'] = True
+        recorder = om.SqliteRecorder('cases.sql')
+        prob.add_recorder(recorder)
+
+        # Run the Opt
+        prob.setup()
+        prob.run_driver()
+        prob.record("after_run_driver")
+
+        # Set the discrete value to something arbritrary
+        prob.set_val('paraboloid.disc_in', 'INCORRECT_VAL')
+        prob.set_val('paraboloid.disc_out', 'INCORRECT_VAL')
+
+        # Load the Case from the recorder
+        cr = om.CaseReader(prob.get_outputs_dir() / "cases.sql")
+        case = cr.get_case('after_run_driver')
+        prob.load_case(case)
+
+        # Assert that the values have returned to those following the opt
+        self.assertEqual(prob.get_val('paraboloid.disc_in'), 'in')
+        self.assertEqual(prob.get_val('paraboloid.disc_out'), 'out')
+
     def test_optimization_load_system_cases(self):
         prob = SellarProblem(SellarDerivativesGrouped, nonlinear_solver=om.NonlinearRunOnce,
                                                        linear_solver=om.ScipyKrylov,
@@ -236,7 +286,7 @@ class TestLoadCase(unittest.TestCase):
         inputs_before = prob.model.list_inputs(val=True, units=True, out_stream=None)
         outputs_before = prob.model.list_outputs(val=True, units=True, out_stream=None)
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         # get third case
         system_cases = cr.list_cases('root', out_stream=None)
@@ -280,12 +330,12 @@ class TestLoadCase(unittest.TestCase):
         model = prob.model
         model.nonlinear_solver.add_recorder(self.recorder)
 
-        fail = prob.run_driver()
+        fail = not prob.run_driver().success
         prob.cleanup()
 
         self.assertFalse(fail, 'Problem failed to converge')
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         solver_cases = cr.list_cases('root.nonlinear_solver', out_stream=None)
         case = cr.get_case(solver_cases[0])
@@ -323,12 +373,12 @@ class TestLoadCase(unittest.TestCase):
         prob.set_solver_print(0)
 
         prob.setup()
-        fail = prob.run_driver()
+        fail = not prob.run_driver().success
         prob.cleanup()
 
         self.assertFalse(fail, 'Problem failed to converge')
 
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         driver_cases = cr.list_cases('driver', out_stream=None)
         case = cr.get_case(driver_cases[0])
@@ -419,7 +469,7 @@ class TestLoadCase(unittest.TestCase):
         prob.cleanup()
 
         # get the case we recorded
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
         case = cr.get_case(0)
 
         # check 'use_indices' option, default is to use indices
@@ -475,7 +525,7 @@ class TestLoadCase(unittest.TestCase):
             model._outputs[name] += 1.0
 
         # Now load in the case we recorded
-        cr = om.CaseReader(self.filename)
+        cr = om.CaseReader(prob.get_outputs_dir() / self.filename)
 
         driver_cases = cr.list_cases('driver', out_stream=None)
         case = cr.get_case(driver_cases[0])
@@ -524,7 +574,7 @@ class TestLoadCaseMPI(unittest.TestCase):
         prob.setup()
         prob.run_driver()
 
-        reader = om.CaseReader(recorder_file)
+        reader = om.CaseReader(prob.get_outputs_dir() / recorder_file)
         prob.load_case(reader.get_case(-1))
 
         with multi_proc_exception_check(prob.comm):

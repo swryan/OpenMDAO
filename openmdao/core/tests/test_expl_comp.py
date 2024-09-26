@@ -1,7 +1,5 @@
 """Simple example demonstrating how to implement an explicit component."""
 
-import sys
-
 from io import StringIO
 import unittest
 
@@ -13,76 +11,11 @@ from openmdao.test_suite.components.expl_comp_simple import TestExplCompSimple, 
     TestExplCompSimpleDense
 from openmdao.test_suite.components.sellar import SellarDis1withDerivatives, \
      SellarDis2withDerivatives
-from openmdao.utils.assert_utils import assert_warning, assert_near_equal
+from openmdao.test_suite.components.rectangle import RectangleGroup, \
+    RectangleComp, RectangleCompWithTags, RectangleJacVec
+from openmdao.utils.assert_utils import assert_near_equal
 from openmdao.utils.general_utils import printoptions, remove_whitespace
 from openmdao.utils.mpi import MPI
-
-# Note: The following class definitions are used in feature docs
-
-
-class RectangleComp(om.ExplicitComponent):
-    """
-    A simple Explicit Component that computes the area of a rectangle.
-    """
-
-    def setup(self):
-        self.add_input('length', val=1.)
-        self.add_input('width', val=1.)
-        self.add_output('area', val=1.)
-
-    def setup_partials(self):
-        self.declare_partials('*', '*')
-
-    def compute(self, inputs, outputs):
-        outputs['area'] = inputs['length'] * inputs['width']
-
-
-class RectangleCompWithTags(om.ExplicitComponent):
-    """
-    A simple Explicit Component that also has input and output with tags.
-    """
-
-    def setup(self):
-        self.add_input('length', val=1., tags=["tag1"])
-        self.add_input('width', val=1., tags=["tag2"])
-        self.add_output('area', val=1., tags=["tag1"])
-
-    def setup_partials(self):
-        self.declare_partials('*', '*')
-
-    def compute(self, inputs, outputs):
-        outputs['area'] = inputs['length'] * inputs['width']
-
-
-class RectanglePartial(RectangleComp):
-
-    def compute_partials(self, inputs, partials):
-        partials['area', 'length'] = inputs['width']
-        partials['area', 'width'] = inputs['length']
-
-
-class RectangleJacVec(RectangleComp):
-
-    def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
-        if mode == 'fwd':
-            if 'area' in d_outputs:
-                if 'length' in d_inputs:
-                    d_outputs['area'] += inputs['width'] * d_inputs['length']
-                if 'width' in d_inputs:
-                    d_outputs['area'] += inputs['length'] * d_inputs['width']
-        elif mode == 'rev':
-            if 'area' in d_outputs:
-                if 'length' in d_inputs:
-                    d_inputs['length'] += inputs['width'] * d_outputs['area']
-                if 'width' in d_inputs:
-                    d_inputs['width'] += inputs['length'] * d_outputs['area']
-
-
-class RectangleGroup(om.Group):
-
-    def setup(self):
-        self.add_subsystem('comp1', RectanglePartial(), promotes_inputs=['width', 'length'])
-        self.add_subsystem('comp2', RectangleJacVec(), promotes_inputs=['width', 'length'])
 
 
 class ExplCompTestCase(unittest.TestCase):
@@ -154,6 +87,35 @@ class ExplCompTestCase(unittest.TestCase):
 
         assert_near_equal(prob['comp1.area'], 6.)
         assert_near_equal(prob['comp2.area'], 6.)
+
+        expected = {'comp1.area': {'io': 'output',
+                                   'prom_name': 'comp1.area',
+                                   'units': None,
+                                   'val': np.array([6.])},
+                    'comp1.length': {'io': 'input',
+                                     'prom_name': 'length',
+                                     'units': None,
+                                     'val': np.array([3.])},
+                    'comp1.width': {'io': 'input',
+                                    'prom_name': 'width',
+                                    'units': None,
+                                    'val': np.array([2.])},
+                    'comp2.area': {'io': 'output',
+                                   'prom_name': 'comp2.area',
+                                   'units': None,
+                                   'val': np.array([6.])},
+                    'comp2.length': {'io': 'input',
+                                     'prom_name': 'length',
+                                     'units': None,
+                                     'val': np.array([3.])},
+                    'comp2.width': {'io': 'input',
+                                    'prom_name': 'width',
+                                    'units': None,
+                                    'val': np.array([2.])}}
+
+        # Unit test for list_vars basic functionality.
+        io_vars = prob.model.list_vars(units=True, out_stream=None)
+        self.assertEqual(dict(io_vars), expected)
 
         # total derivs
         total_derivs = prob.compute_totals(
@@ -807,13 +769,8 @@ class ExplCompTestCase(unittest.TestCase):
         p.model.run_apply_nonlinear()
 
         # list outputs with residuals
-        sysout = sys.stdout
-        try:
-            capture_stdout = StringIO()
-            sys.stdout = capture_stdout
-            p.model.list_outputs(residuals=True, prom_name=False)
-        finally:
-            sys.stdout = sysout
+        stream = StringIO()
+        p.model.list_outputs(residuals=True, prom_name=False, out_stream=stream)
 
         expected_text = [
             "1 Explicit Output(s) in 'model'",
@@ -836,18 +793,14 @@ class ExplCompTestCase(unittest.TestCase):
             "",
             "",
         ]
-        captured_output = capture_stdout.getvalue()
+
+        captured_output = stream.getvalue()
         for i, line in enumerate(captured_output.split('\n')):
             self.assertEqual(line.strip(), expected_text[i].strip())
 
         # list outputs filtered by residuals_tol
-        sysout = sys.stdout
-        try:
-            capture_stdout = StringIO()
-            sys.stdout = capture_stdout
-            p.model.list_outputs(residuals=True, residuals_tol=1e-2, prom_name=False)
-        finally:
-            sys.stdout = sysout
+        stream = StringIO()
+        p.model.list_outputs(residuals=True, residuals_tol=1e-2, prom_name=False, out_stream=stream)
 
         # Note: Explicit output has 0 residual, so it should not be included.
         # Note: Implicit outputs Z2 and Z3 should both be shown, because the
@@ -867,7 +820,8 @@ class ExplCompTestCase(unittest.TestCase):
             "",
             "",
         ]
-        captured_output = capture_stdout.getvalue()
+
+        captured_output = stream.getvalue()
         for i, line in enumerate(captured_output.split('\n')):
             self.assertEqual(line.strip(), expected_text[i].strip())
 
@@ -952,7 +906,7 @@ class ExplCompTestCase(unittest.TestCase):
         with self.assertRaises(TypeError) as cm:
             prob.setup(self)
 
-        msg = "The tags argument should be a str or list"
+        msg = "The tags argument should be a str, set, or list"
         self.assertEqual(str(cm.exception), msg)
 
     def test_compute_inputs_read_only(self):

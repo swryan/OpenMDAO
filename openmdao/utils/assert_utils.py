@@ -2,7 +2,6 @@
 Functions for making assertions about OpenMDAO Systems.
 """
 
-from math import isnan
 from fnmatch import fnmatch
 import warnings
 import unittest
@@ -21,10 +20,12 @@ from openmdao.core.group import Group
 from openmdao.jacobians.dictionary_jacobian import DictionaryJacobian
 from openmdao.utils.general_utils import pad_name
 from openmdao.utils.om_warnings import reset_warning_registry
+from openmdao.utils.mpi import MPI
+from openmdao.utils.testing_utils import snum_equal
 
 
 @contextmanager
-def assert_warning(category, msg, contains_msg=False):
+def assert_warning(category, msg, contains_msg=False, ranks=None):
     """
     Context manager asserting that a warning is issued.
 
@@ -36,6 +37,8 @@ def assert_warning(category, msg, contains_msg=False):
         The text of the expected warning.
     contains_msg : bool
         Set to True to check that the warning text contains msg, rather than checking equality.
+    ranks : int or list of int, optional
+        The global ranks on which the warning is expected.
 
     Yields
     ------
@@ -50,6 +53,15 @@ def assert_warning(category, msg, contains_msg=False):
         with warnings.catch_warnings(record=True) as w:
             warnings.simplefilter("always")
             yield
+
+    if ranks is not None:
+        if MPI is None:
+            raise RuntimeError("ranks argument has been specified but MPI is not active")
+        else:
+            if not isinstance(ranks, list):
+                ranks = [ranks]
+            if MPI.COMM_WORLD.rank not in ranks:
+                return
 
     for warn in w:
         if contains_msg:
@@ -101,7 +113,7 @@ def assert_warnings(expected_warnings):
 
 
 @contextmanager
-def assert_no_warning(category, msg=None):
+def assert_no_warning(category, msg=None, contains=False):
     """
     Context manager asserting that a warning is not issued.
 
@@ -111,6 +123,8 @@ def assert_no_warning(category, msg=None):
         The class of the warning.
     msg : str or None
         The text of the warning. If None then only the warning class will be checked.
+    contains : bool
+        If True, check that the warning text contains msg, rather than checking equality.
 
     Yields
     ------
@@ -130,6 +144,9 @@ def assert_no_warning(category, msg=None):
         if issubclass(warn.category, category):
             if msg is None:
                 raise AssertionError(f"Found warning: {category} {str(warn.message)}")
+            elif contains:
+                if msg in str(warn.message):
+                    raise AssertionError(f"Found warning: {category} containing '{msg}'")
             elif str(warn.message) == msg:
                 raise AssertionError(f"Found warning: {category} {msg}")
 
@@ -363,10 +380,12 @@ def assert_no_approx_partials(system, include_self=True, recurse=True, method='a
             if s._approx_schemes:
                 if method == 'any' or method in s._approx_schemes:
                     has_approx_partials = True
-                    approx_partials = [(k, v['method']) for k, v in s._declared_partials.items()
+                    approx_partials = [(k, v['method'])
+                                       for k, v in s._declared_partials_patterns.items()
                                        if 'method' in v and v['method']]
                     msg += '    ' + s.pathname + '\n'
                     for key, method in approx_partials:
+                        key = (str(key[0]), str(key[1]))
                         msg += '        of={0:12s}    wrt={1:12s}    method={2:2s}\n'.format(key[0],
                                                                                              key[1],
                                                                                              method)
@@ -400,7 +419,7 @@ def assert_no_dict_jacobians(system, include_self=True, recurse=True):
         raise AssertionError('\n'.join(parts))
 
 
-def assert_near_equal(actual, desired, tolerance=1e-15):
+def assert_near_equal(actual, desired, tolerance=1e-15, tol_type='rel'):
     """
     Check relative error.
 
@@ -416,7 +435,12 @@ def assert_near_equal(actual, desired, tolerance=1e-15):
     desired : float, array-like, dict
         The value expected.
     tolerance : float
-        Maximum relative error ``(actual - desired) / desired``.
+        Maximum relative or absolute error.
+        For relative tolerance: ``(actual - desired) / desired``.
+        For absolute  tolerance: ``(actual - desired)``.
+    tol_type : {'rel', 'abs'}
+        Type of error to use: 'rel' for relative error, 'abs' for absolute error.
+        Default is set to 'rel'.
 
     Returns
     -------
@@ -485,7 +509,7 @@ def assert_near_equal(actual, desired, tolerance=1e-15):
 
         for key in actual_keys:
             try:
-                new_error = assert_near_equal(actual[key], desired[key], tolerance)
+                new_error = assert_near_equal(actual[key], desired[key], tolerance, tol_type)
                 error = max(error, new_error)
             except ValueError as exception:
                 msg = '{}: '.format(key) + str(exception)
@@ -549,22 +573,22 @@ def assert_near_equal(actual, desired, tolerance=1e-15):
                 else:
                     raise ValueError('actual and desired values have non-matching nan'
                                      ' values')
-            if np.linalg.norm(desired) == 0:
-                error = np.linalg.norm(actual)
+            if np.linalg.norm(desired) == 0 or tol_type == 'abs':
+                error = np.linalg.norm(actual - desired)
             else:
                 error = np.linalg.norm(actual - desired) / np.linalg.norm(desired)
 
             if abs(error) > tolerance:
                 if actual.size < 10 and desired.size < 10:
-                    raise ValueError('actual %s, desired %s, rel error %s, tolerance %s'
-                                     % (actual, desired, error, tolerance))
+                    raise ValueError('actual %s, desired %s, %s error %s, tolerance %s'
+                                     % (actual, desired, tol_type, error, tolerance))
                 else:
                     raise ValueError('arrays do not match, rel error %.3e > tol (%.3e)' %
                                      (error, tolerance))
     elif isinstance(actual, tuple) and isinstance(desired, tuple):
         error = 0.0
         for act, des in zip(actual, desired):
-            new_error = assert_near_equal(act, des, tolerance)
+            new_error = assert_near_equal(act, des, tolerance, tol_type)
             error = max(error, new_error)
     else:
         raise ValueError(
@@ -591,6 +615,24 @@ def assert_equal_arrays(a1, a2):
     assert a1.shape == a2.shape
     for x, y in zip(a1.flat, a2.flat):
         assert x == y
+
+
+def assert_equal_numstrings(s1, s2, atol=1e-6, rtol=1e-6):
+    """
+    Check that two strings containing numbers are equal after convering numerical parts to floats.
+
+    Parameters
+    ----------
+    s1 : str
+        The first numeric string to compare.
+    s2 : str
+        The second numeric string to compare.
+    atol : float
+        Absolute error tolerance. Default is 1e-6.
+    rtol : float
+        Relative error tolerance. Default is 1e-6.
+    """
+    assert snum_equal(s1, s2, atol=atol, rtol=rtol)
 
 
 def skip_helper(msg):

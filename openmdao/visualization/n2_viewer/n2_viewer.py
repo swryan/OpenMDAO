@@ -1,8 +1,8 @@
 """Code for generating N2 diagram."""
 import inspect
 import os
-import sys
 import pathlib
+import sys
 from operator import itemgetter
 
 import networkx as nx
@@ -22,6 +22,7 @@ from openmdao.components.meta_model_unstructured_comp import MetaModelUnStructur
 from openmdao.drivers.doe_driver import DOEDriver
 from openmdao.recorders.case_reader import CaseReader
 from openmdao.solvers.nonlinear.newton import NewtonSolver
+from openmdao.utils.array_utils import convert_ndarray_to_support_nans_in_json
 from openmdao.utils.class_util import overrides_method
 from openmdao.utils.general_utils import default_noraise
 from openmdao.utils.mpi import MPI
@@ -38,66 +39,11 @@ _MAX_OPTION_SIZE = int(1e4)          # If option value is bigger than this do no
 _default_n2_filename = 'n2.html'
 
 
-def _convert_nans_in_nested_list(val_as_list):
-    """
-    Given a list, possibly nested, replace any numpy.nan values with the string "nan".
-
-    This is done since JSON does not handle nan. This code is used to pass variable values
-    to the N2 diagram.
-
-    The modifications to the list values are done in-place to avoid excessive copying of lists.
-
-    Parameters
-    ----------
-    val_as_list : list, possibly nested
-        the list whose nan elements need to be converted
-    """
-    for i, val in enumerate(val_as_list):
-        if isinstance(val, list):
-            _convert_nans_in_nested_list(val)
-        else:
-            if np.isnan(val):
-                val_as_list[i] = "nan"
-            elif np.isinf(val):
-                val_as_list[i] = "infinity"
-            else:
-                val_as_list[i] = val
-
-
-def _convert_ndarray_to_support_nans_in_json(val):
-    """
-    Given numpy array of arbitrary dimensions, return the equivalent nested list with nan replaced.
-
-    numpy.nan values are replaced with the string "nan".
-
-    Parameters
-    ----------
-    val : ndarray
-        the numpy array to be converted
-
-    Returns
-    -------
-    object : list, possibly nested
-        The equivalent list with any nan values replaced with the string "nan".
-    """
-    val = np.asarray(val)
-
-    # do a quick check for any nans or infs and if not we can avoid the slow check
-    nans = np.where(np.isnan(val))
-    infs = np.where(np.isinf(val))
-    if nans[0].size == 0 and infs[0].size == 0:
-        return val.tolist()
-
-    val_as_list = val.tolist()
-    _convert_nans_in_nested_list(val_as_list)
-    return val_as_list
-
-
 def _get_array_info(system, vec, name, prom, var_dict, from_src=True):
     ndarray_to_convert = vec._abs_get_val(name, flat=False) if vec else \
         system.get_val(prom, from_src=from_src)
 
-    var_dict['val'] = _convert_ndarray_to_support_nans_in_json(ndarray_to_convert)
+    var_dict['val'] = convert_ndarray_to_support_nans_in_json(ndarray_to_convert)
 
     # Find the minimum indices and value
     min_indices = np.unravel_index(np.nanargmin(ndarray_to_convert, axis=None),
@@ -363,8 +309,7 @@ def _get_declare_partials(system):
         beginning from the given system on down.
     """
     declare_partials_list = []
-    for key, _ in system._declared_partials_iter():
-        of, wrt = key
+    for of, wrt in system._declared_partials_iter():
         if of != wrt:
             declare_partials_list.append(f"{of} > {wrt}")
 
@@ -377,7 +322,7 @@ def _get_viewer_data(data_source, values=_UNDEFINED, case_id=None):
 
     Parameters
     ----------
-    data_source : <Problem> or <Group> or str
+    data_source : <Problem> or <Group> or str or pathlib.Path
         A Problem or Group or case recorder filename containing the model or model data.
         If the case recorder file from a parallel run has separate metadata, the
         filenames can be specified with a comma, e.g.: case.sql_0,case.sql_meta
@@ -431,13 +376,13 @@ def _get_viewer_data(data_source, values=_UNDEFINED, case_id=None):
             msg = f"Viewer data is not available for sub-Group '{data_source.pathname}'."
             raise TypeError(msg)
 
-        # set default behavior for values flag
+        # set default behavio r for values flag
         if values is _UNDEFINED:
             values = (data_source._problem_meta is not None and
                       data_source._problem_meta['setup_status'] >= _SetupStatus.POST_FINAL_SETUP)
 
-    elif isinstance(data_source, str):
-        if ',' in data_source:
+    elif isinstance(data_source, str) or isinstance(data_source, pathlib.Path):
+        if isinstance(data_source, str) and ',' in data_source:
             filenames = data_source.split(',')
             cr = CaseReader(filenames[0], metadata_filename=filenames[1])
         else:
@@ -641,9 +586,16 @@ def n2(data_source, outfile=_default_n2_filename, path=None, values=_UNDEFINED, 
         err_msg = str(err)
         issue_warning(err_msg)
 
-    # if MPI is active only display one copy of the viewer
-    if MPI and MPI.COMM_WORLD.rank != 0:
-        return
+    # If MPI is active only display one copy of the viewer.
+    # If the data_source is a Problem, only run on the root proc of its comm.
+    # Otherwise, only run on the global root proc.
+    if MPI:
+        try:
+            comm = data_source.comm
+        except AttributeError:
+            comm = MPI.COMM_WORLD
+        if comm.rank != 0:
+            return
 
     options = {}
     model_data['options'] = options
@@ -690,7 +642,7 @@ def n2(data_source, outfile=_default_n2_filename, path=None, values=_UNDEFINED, 
 # N2 report definition
 def _run_n2_report(prob, report_filename=_default_n2_filename):
 
-    n2_filepath = str(pathlib.Path(prob.get_reports_dir()).joinpath(report_filename))
+    n2_filepath = prob.get_reports_dir() / report_filename
     try:
         n2(prob, show_browser=False, outfile=n2_filepath, display_in_notebook=False)
     except RuntimeError as err:
@@ -702,7 +654,7 @@ def _run_n2_report(prob, report_filename=_default_n2_filename):
 
 def _run_n2_report_w_errors(prob, report_filename=_default_n2_filename):
     if prob._any_rank_has_saved_errors():
-        n2_filepath = str(pathlib.Path(prob.get_reports_dir()).joinpath(report_filename))
+        n2_filepath = prob.get_reports_dir() / report_filename
         # only run the n2 here if we've had setup errors. Normally we'd wait until
         # after final_setup in order to have correct values for all of the I/O variables.
         try:

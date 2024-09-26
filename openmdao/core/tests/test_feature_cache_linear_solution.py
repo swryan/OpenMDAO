@@ -51,7 +51,6 @@ class CacheLinearTestCase(unittest.TestCase):
             def linearize(self, inputs, outputs, partials):
                 a = inputs['a'][0]
                 b = inputs['b'][0]
-                c = inputs['c'][0]
                 x = outputs['states'][0]
                 y = outputs['states'][1]
 
@@ -65,11 +64,10 @@ class CacheLinearTestCase(unittest.TestCase):
             def solve_linear(self, d_outputs, d_residuals, mode):
 
                 if mode == 'fwd':
-                    print("incoming initial guess", d_outputs['states'])
-                    d_outputs['states'] = gmres(self.state_jac, d_residuals['states'], x0=d_outputs['states'], atol='legacy')[0]
+                    d_outputs['states'] = gmres(self.state_jac, d_residuals['states'], x0=d_outputs['states'], atol=0)[0]
 
                 elif mode == 'rev':
-                    d_residuals['states'] = gmres(self.state_jac, d_outputs['states'], x0=d_residuals['states'], atol='legacy')[0]
+                    d_residuals['states'] = gmres(self.state_jac, d_outputs['states'], x0=d_residuals['states'], atol=0)[0]
 
         p = om.Problem()
         p.driver = om.ScipyOptimizeDriver()

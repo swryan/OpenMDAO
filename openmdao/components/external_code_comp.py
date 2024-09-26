@@ -8,7 +8,7 @@ from shutil import which
 from openmdao.core.analysis_error import AnalysisError
 from openmdao.core.explicitcomponent import ExplicitComponent
 from openmdao.core.implicitcomponent import ImplicitComponent
-from openmdao.utils.shell_proc import STDOUT, DEV_NULL, ShellProc
+from openmdao.utils.shell_proc import STDOUT, DEV_NULL, ShellProc  # noqa: F401
 
 
 class ExternalCodeDelegate(object):
@@ -195,7 +195,8 @@ class ExternalCodeDelegate(object):
         comp = self._comp
 
         if isinstance(command, str):
-            program_to_execute = re.findall(r"^([\w\-]+)", command)[0]
+            # parse for the first word, which may contain dashes and path separators
+            program_to_execute = re.findall(r"^([\w\-\/\:\.]+)", command)[0]
         else:
             program_to_execute = command[0]
 

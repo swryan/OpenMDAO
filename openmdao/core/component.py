@@ -17,14 +17,16 @@ from openmdao.core.constants import INT_DTYPE
 from openmdao.jacobians.dictionary_jacobian import DictionaryJacobian
 from openmdao.utils.array_utils import shape_to_len
 from openmdao.utils.units import simplify_unit
-from openmdao.utils.name_maps import abs_key_iter, abs_key2rel_key, rel_name2abs_name
+from openmdao.utils.name_maps import abs_key_iter, abs_key2rel_key
 from openmdao.utils.mpi import MPI
 from openmdao.utils.general_utils import format_as_float_or_array, ensure_compatible, \
-    find_matches, make_set, convert_src_inds, inconsistent_across_procs
+    find_matches, make_set, inconsistent_across_procs
 from openmdao.utils.indexer import Indexer, indexer
 import openmdao.utils.coloring as coloring_mod
 from openmdao.utils.om_warnings import issue_warning, MPIWarning, DistributedComponentWarning, \
     DerivativesWarning, warn_deprecation
+from openmdao.utils.code_utils import is_lambda, LambdaPickleWrapper
+
 
 _forbidden_chars = {'.', '*', '?', '!', '[', ']'}
 _whitespace = {' ', '\t', '\r', '\n'}
@@ -79,8 +81,9 @@ class Component(System):
         determine the list of absolute names.
     _static_var_rel_names : dict
         Static version of above - stores names of variables added outside of setup.
-    _declared_partials : dict
-        Cached storage of user-declared partials.
+    _declared_partials_patterns : dict
+        Dictionary of declared partials patterns.  Each key is a tuple of the form
+        (of, wrt) where of and wrt may be glob patterns.
     _declared_partial_checks : list
         Cached storage of user-declared check partial options.
     _no_check_partials : bool
@@ -101,7 +104,7 @@ class Component(System):
         self._static_var_rel_names = {'input': [], 'output': []}
         self._static_var_rel2meta = {}
 
-        self._declared_partials = defaultdict(dict)
+        self._declared_partials_patterns = {}
         self._declared_partial_checks = []
         self._no_check_partials = False
         self._has_distrib_outputs = False
@@ -120,34 +123,9 @@ class Component(System):
                                   'apply_linear, apply_nonlinear, and compute_jacvec_product '
                                   'only on rank 0 and broadcast the results to the other ranks.')
         self.options.declare('always_opt', types=bool, default=False,
-                             desc='If True, force this component to be included in the optimization'
-                                  ' loop if the Problem option "group_by_pre_opt_post" is True.')
-
-    def _check_matfree_deprecation(self):
-        # check for mixed distributed variables
-        has_dist_ins = has_nd_ins = has_dist_outs = has_nd_outs = False
-        for name in self._var_rel_names['input']:
-            meta = self._var_rel2meta[name]
-            if meta['distributed']:
-                has_dist_ins = True
-            else:
-                has_nd_ins = True
-
-        for name in self._var_rel_names['output']:
-            meta = self._var_rel2meta[name]
-            if meta['distributed']:
-                has_dist_outs = True
-            else:
-                has_nd_outs = True
-
-        if (has_nd_ins and has_dist_outs) or (has_dist_ins and has_nd_outs):
-            warn_deprecation(f"{self.msginfo}: It appears this component mixes "
-                             "distributed/non-distributed inputs and outputs, so it may break "
-                             "starting with OpenMDAO 3.25, where the convention "
-                             "used when passing data between distributed and non-distributed "
-                             "inputs and outputs within a matrix free component will change. "
-                             "See https://github.com/OpenMDAO/POEMs/blob/master/POEM_075.md for "
-                             "details.")
+                             desc='If True, force nonlinear operations on this component to be '
+                                  'included in the optimization loop even if this component is not '
+                                  'relevant to the design variables and responses.')
 
     def setup(self):
         """
@@ -161,7 +139,7 @@ class Component(System):
         """
         pass
 
-    def _setup_procs(self, pathname, comm, mode, prob_meta):
+    def _setup_procs(self, pathname, comm, prob_meta):
         """
         Execute first phase of the setup process.
 
@@ -173,13 +151,10 @@ class Component(System):
             Global name of the system, including the path.
         comm : MPI.Comm or <FakeComm>
             MPI communicator object.
-        mode : str
-            Derivatives calculation mode, 'fwd' for forward, and 'rev' for
-            reverse (adjoint). Default is 'rev'.
         prob_meta : dict
             Problem level metadata.
         """
-        super()._setup_procs(pathname, comm, mode, prob_meta)
+        super()._setup_procs(pathname, comm, prob_meta)
 
         if self._num_par_fd > 1:
             if comm.size > 1:
@@ -191,7 +166,6 @@ class Component(System):
                 self._num_par_fd = 1
 
         self.comm = comm
-        nprocs = comm.size
 
         # Clear out old variable information so that we can call setup on the component.
         self._var_rel_names = {'input': [], 'output': []}
@@ -200,10 +174,6 @@ class Component(System):
             self._has_distrib_vars = self._has_distrib_outputs = False
 
         for meta in self._static_var_rel2meta.values():
-            # variable isn't distributed if we're only running on 1 proc
-            if nprocs == 1 and 'distributed' in meta and meta['distributed']:
-                meta['distributed'] = False
-
             # reset shape if any dynamic shape parameters are set in case this is a resetup
             # NOTE: this is necessary because we allow variables to be added in __init__.
             if 'shape_by_conn' in meta and (meta['shape_by_conn'] or
@@ -246,12 +216,12 @@ class Component(System):
         # Check here if declare_coloring was called during setup but declare_partials wasn't.
         # If declare partials wasn't called, call it with of='*' and wrt='*' so we'll have
         # something to color.
-        if self._coloring_info['coloring'] is not None:
-            for meta in self._declared_partials.values():
+        if self._coloring_info.coloring is not None:
+            for meta in self._declared_partials_patterns.values():
                 if 'method' in meta and meta['method'] is not None:
                     break
             else:
-                method = self._coloring_info['method']
+                method = self._coloring_info.method
                 issue_warning("declare_coloring or use_fixed_coloring was called but no approx"
                               " partials were declared.  Declaring all partials as approximated "
                               f"using default metadata and method='{method}'.", prefix=self.msginfo,
@@ -311,8 +281,48 @@ class Component(System):
         else:
             self._discrete_inputs = self._discrete_outputs = ()
 
+        if self.comm.size > 1:
+            # check that same variables are declared on all procs
+            vnames = (list(self._var_rel_names['output']), list(self._var_rel_names['input']))
+            allnames = self.comm.gather(vnames, root=0)
+            if self.comm.rank == 0:
+                outset, inset = vnames
+                msg = ''
+                for oset, iset in allnames:
+                    if iset != inset or oset != outset:
+                        msg = self._missing_vars_error(allnames)
+                        break
+                self.comm.bcast(msg, root=0)
+            else:
+                msg = self.comm.bcast(None, root=0)
+
+            if msg:
+                raise RuntimeError(msg)
+
         self._serial_idxs = None
         self._inconsistent_keys = set()
+
+    def _missing_vars_error(self, allnames):
+        msg = ''
+        outset, inset = allnames[0]
+        for rank, (olist, ilist) in enumerate(allnames):
+            if rank != 0 and (olist != outset or ilist != inset):
+                idiff = set(inset).symmetric_difference(ilist)
+                odiff = set(outset).symmetric_difference(olist)
+                if idiff or odiff:
+                    varnames = sorted(idiff | odiff)
+                    if len(varnames) == 1:
+                        varmsg = f"Variable '{varnames[0]}' exists on some ranks and not others."
+                    else:
+                        varmsg = f"Variables {varnames} exist on some ranks and not others."
+                else:
+                    varmsg = "Variables have not been declared in the same order on all ranks."
+
+                msg = (f"{self.msginfo}: {varmsg} A component must declare all variables in "
+                       "the same order on all ranks, even if the size of the variable is 0 on "
+                       "some ranks.")
+                break
+        return msg
 
     @collect_errors
     def _setup_var_sizes(self):
@@ -357,9 +367,9 @@ class Component(System):
                                                                 self._approx_schemes):
             raise RuntimeError("%s: num_par_fd is > 1 but no FD is active." % self.msginfo)
 
-        for key, dct in self._declared_partials.items():
+        for key, pattern_meta in self._declared_partials_patterns.items():
             of, wrt = key
-            self._declare_partials(of, wrt, dct)
+            self._resolve_partials_patterns(of, wrt, pattern_meta)
 
     def setup_partials(self):
         """
@@ -371,37 +381,42 @@ class Component(System):
         """
         pass
 
+    def _setup_residuals(self):
+        """
+        Process hook to call user-defined setup_residuals method if provided.
+        """
+        pass
+
     def _declared_partials_iter(self):
         """
         Iterate over all declared partials.
 
         Yields
         ------
-        (key, meta) : (key, dict)
-            key: a tuple of the form (of, wrt)
-            meta: a dict containing the partial metadata
+        key : tuple (of, wrt)
+            Subjacobian key.
         """
-        for key, meta in self._subjacs_info.items():
-            yield key, meta
+        yield from self._subjacs_info.keys()
 
     def _get_missing_partials(self, missing):
         """
-        Return a list of (of, wrt) tuples for which derivatives have not been declared.
+        Provide (of, wrt) tuples for which derivatives have not been declared in the component.
 
         Parameters
         ----------
         missing : dict
             Dictionary containing set of missing derivatives keyed by system pathname.
         """
-        if ('*', '*') in self._declared_partials:
+        if ('*', '*') in self._declared_partials_patterns or \
+                (('*',), ('*',)) in self._declared_partials_patterns:
             return
 
         # keep old default behavior where matrix free components are assumed to have
         # 'dense' whole variable to whole variable partials if no partials are declared.
-        if self.matrix_free and not self._declared_partials:
+        if self.matrix_free and not self._declared_partials_patterns:
             return
 
-        keyset = {key for key, _ in self._declared_partials_iter()}
+        keyset = self._subjacs_info
         mset = set()
         for of in self._var_allprocs_abs2meta['output']:
             for wrt in self._var_allprocs_abs2meta['input']:
@@ -440,39 +455,14 @@ class Component(System):
                 if self._num_par_fd > 1:
                     raise RuntimeError(f"{self.msginfo}: Can't set 'run_root_only' option when "
                                        "using parallel FD.")
-                if self._problem_meta['using_par_deriv_color']:
+                if self._problem_meta['has_par_deriv_color']:
                     raise RuntimeError(f"{self.msginfo}: Can't set 'run_root_only' option when "
                                        "using parallel_deriv_color.")
                 return True
         return False
 
-    def _update_wrt_matches(self, info):
-        """
-        Determine the list of wrt variables that match the wildcard(s) given in declare_coloring.
-
-        Parameters
-        ----------
-        info : dict
-            Coloring metadata dict.
-        """
-        _, allwrt = self._get_partials_varlists()
-        wrt_patterns = info['wrt_patterns']
-        if wrt_patterns is None or '*' in wrt_patterns:
-            info['wrt_matches_rel'] = None
-            info['wrt_matches'] = None
-            return
-
-        matches_rel = set()
-        for w in wrt_patterns:
-            matches_rel.update(find_matches(w, allwrt))
-
-        # error if nothing matched
-        if not matches_rel:
-            raise ValueError("{}: Invalid 'wrt' variable(s) specified for colored approx partial "
-                             "options: {}.".format(self.msginfo, wrt_patterns))
-
-        info['wrt_matches_rel'] = matches_rel
-        info['wrt_matches'] = [rel_name2abs_name(self, n) for n in matches_rel]
+    def _promoted_wrt_iter(self):
+        yield from self._get_partials_wrts()
 
     def _update_subjac_sparsity(self, sparsity):
         """
@@ -555,8 +545,8 @@ class Component(System):
                 raise TypeError('%s: The units argument should be a str or None.' % self.msginfo)
             units = simplify_unit(units, msginfo=self.msginfo)
 
-        if tags is not None and not isinstance(tags, (str, list)):
-            raise TypeError('The tags argument should be a str or list')
+        if tags is not None and not isinstance(tags, (str, list, set)):
+            raise TypeError('The tags argument should be a str, set, or list')
 
         if copy_shape and compute_shape:
             raise ValueError(f"{self.msginfo}: Only one of 'copy_shape' or 'compute_shape' can "
@@ -587,11 +577,13 @@ class Component(System):
             if distributed is None:
                 distributed = False
             # using ._dict below to avoid tons of deprecation warnings
-            distributed = distributed or self.options._dict['distributed']['val']
+            distributed = distributed or ('distributed' in self.options and
+                                          self.options._dict['distributed']['val'])
 
-        metadata = {}
+        if compute_shape is not None and is_lambda(compute_shape):
+            compute_shape = LambdaPickleWrapper(compute_shape)
 
-        metadata.update({
+        metadata = {
             'val': val,
             'shape': shape,
             'size': shape_to_len(shape),
@@ -604,7 +596,7 @@ class Component(System):
             'shape_by_conn': shape_by_conn,
             'compute_shape': compute_shape,
             'copy_shape': copy_shape,
-        })
+        }
 
         # this will get reset later if comm size is 1
         self._has_distrib_vars |= metadata['distributed']
@@ -828,7 +820,8 @@ class Component(System):
             if distributed is None:
                 distributed = False
             # using ._dict below to avoid tons of deprecation warnings
-            distributed = distributed or self.options._dict['distributed']['val']
+            distributed = distributed or ('distributed' in self.options and
+                                          self.options._dict['distributed']['val'])
 
         if copy_shape and compute_shape:
             raise ValueError(f"{self.msginfo}: Only one of 'copy_shape' or 'compute_shape' can "
@@ -842,9 +835,10 @@ class Component(System):
             raise TypeError(f"{self.msginfo}: The compute_shape argument should be a function but "
                             f"a '{type(compute_shape).__name__}' was given.")
 
-        metadata = {}
+        if compute_shape is not None and is_lambda(compute_shape):
+            compute_shape = LambdaPickleWrapper(compute_shape)
 
-        metadata.update({
+        metadata = {
             'val': val,
             'shape': shape,
             'size': shape_to_len(shape),
@@ -861,7 +855,7 @@ class Component(System):
             'shape_by_conn': shape_by_conn,
             'compute_shape': compute_shape,
             'copy_shape': copy_shape,
-        })
+        }
 
         # this will get reset later if comm size is 1
         self._has_distrib_vars |= metadata['distributed']
@@ -1006,17 +1000,6 @@ class Component(System):
                         if dist_in:
                             offset = np.sum(sizes_in[:iproc, i])
                             end = offset + sizes_in[iproc, i]
-                        else:
-                            if src.startswith('_auto_ivc.'):
-                                nzs = np.nonzero(vout_sizes)[0]
-                                if nzs.size == 1:
-                                    # special case where we have a 'distributed' auto_ivc output
-                                    # that has a nonzero value in only one proc, so we can treat
-                                    # it like a non-distributed output. This happens in cases
-                                    # where an auto_ivc output connects to a variable that is
-                                    # remote on at least one proc.
-                                    offset = 0
-                                    end = vout_sizes[nzs[0]]
 
                     # total sizes differ and output is distributed, so can't determine mapping
                     if offset is None:
@@ -1059,25 +1042,14 @@ class Component(System):
         **kwargs : dict
             Keyword arguments for controlling the behavior of the approximation.
         """
-        pattern_matches = self._find_partial_matches(of, wrt)
         self._has_approx = True
+        info = self._subjacs_info
 
-        for of_bundle, wrt_bundle in product(*pattern_matches):
-            of_pattern, of_matches = of_bundle
-            wrt_pattern, wrt_matches = wrt_bundle
-            if not of_matches:
-                raise ValueError('{}: No matches were found for of="{}"'.format(self.msginfo,
-                                                                                of_pattern))
-            if not wrt_matches:
-                raise ValueError('{}: No matches were found for wrt="{}"'.format(self.msginfo,
-                                                                                 wrt_pattern))
-
-            info = self._subjacs_info
-            for abs_key in abs_key_iter(self, of_matches, wrt_matches):
-                meta = info[abs_key]
-                meta['method'] = method
-                meta.update(kwargs)
-                info[abs_key] = meta
+        for abs_key in self._matching_key_iter(of, wrt):
+            meta = info[abs_key]
+            meta['method'] = method
+            meta.update(kwargs)
+            info[abs_key] = meta
 
     def declare_partials(self, of, wrt, dependent=True, rows=None, cols=None, val=None,
                          method='exact', step=None, form=None, step_calc=None, minimum_step=None):
@@ -1086,10 +1058,10 @@ class Component(System):
 
         Parameters
         ----------
-        of : str or list of str
+        of : str or iter of str
             The name of the residual(s) that derivatives are being computed for.
             May also contain a glob pattern.
-        wrt : str or list of str
+        wrt : str or iter of str
             The name of the variables that derivatives are taken with respect to.
             This can contain the name of any input or output variable.
             May also contain a glob pattern.
@@ -1140,13 +1112,20 @@ class Component(System):
             msg = '{}: d({})/d({}): method "{}" is not supported, method must be one of {}'
             raise ValueError(msg.format(self.msginfo, of, wrt, method, sorted(_supported_methods)))
 
-        # lists aren't hashable so convert to tuples
-        if isinstance(of, list):
-            of = tuple(of)
-        if isinstance(wrt, list):
-            wrt = tuple(wrt)
+        if not isinstance(of, (str, Iterable)):
+            raise ValueError(f"{self.msginfo}: in declare_partials, the 'of' arg must be a string "
+                             f"or an iter of strings, but got {of}.")
+        if not isinstance(wrt, (str, Iterable)):
+            raise ValueError(f"{self.msginfo}: in declare_partials, the 'wrt' arg must be a "
+                             f"string or an iter of strings, but got {wrt}.")
 
-        meta = self._declared_partials[of, wrt]
+        of = of if isinstance(of, str) else tuple(of)
+        wrt = wrt if isinstance(wrt, str) else tuple(wrt)
+
+        key = (of, wrt)
+        if key not in self._declared_partials_patterns:
+            self._declared_partials_patterns[key] = {}
+        meta = self._declared_partials_patterns[key]
         meta['dependent'] = dependent
 
         # If only one of rows/cols is specified
@@ -1165,8 +1144,8 @@ class Component(System):
                                  f'will raise an error.')
 
             if rows is not None:
-                rows = np.array(rows, dtype=INT_DTYPE, copy=False)
-                cols = np.array(cols, dtype=INT_DTYPE, copy=False)
+                rows = np.asarray(rows, dtype=INT_DTYPE)
+                cols = np.asarray(cols, dtype=INT_DTYPE)
 
                 # Check the length of rows and cols to catch this easy mistake and give a
                 # clear message.
@@ -1374,7 +1353,7 @@ class Component(System):
         if not self._declared_partial_checks:
             return {}
         opts = {}
-        _, wrt = self._get_partials_varlists()
+        wrt = self._get_partials_wrts()
         invalid_wrt = []
         matrix_free = self.matrix_free
 
@@ -1427,9 +1406,9 @@ class Component(System):
 
         return opts
 
-    def _declare_partials(self, of, wrt, dct):
+    def _resolve_partials_patterns(self, of, wrt, pattern_meta):
         """
-        Store subjacobian metadata for later use.
+        Store subjacobian metadata for specific of, wrt pairs after resolving glob patterns.
 
         Parameters
         ----------
@@ -1440,18 +1419,19 @@ class Component(System):
             The names of the variables that derivatives are taken with respect to.
             This can contain the name of any input or output variable.
             May also contain glob patterns.
-        dct : dict
-            Metadata dict specifying shape, and/or approx properties.
+        pattern_meta : dict
+            Metadata dict specifying shape, and/or approx properties, keyed by (of, wrt) as
+            described above.
         """
-        val = dct['val'] if 'val' in dct else None
+        val = pattern_meta['val'] if 'val' in pattern_meta else None
         is_scalar = isscalar(val)
-        dependent = dct['dependent']
+        dependent = pattern_meta['dependent']
         matfree = self.matrix_free
 
         if dependent:
-            if 'rows' in dct and dct['rows'] is not None:  # sparse list format
-                rows = dct['rows']
-                cols = dct['cols']
+            if 'rows' in pattern_meta and pattern_meta['rows'] is not None:  # sparse list format
+                rows = pattern_meta['rows']
+                cols = pattern_meta['cols']
 
                 if is_scalar:
                     val = np.full(rows.size, val, dtype=float)
@@ -1484,15 +1464,141 @@ class Component(System):
                 rows = None
                 cols = None
 
-        pattern_matches = self._find_partial_matches(of, '*' if wrt is None else wrt)
         abs2meta_in = self._var_abs2meta['input']
         abs2meta_out = self._var_abs2meta['output']
 
         is_array = isinstance(val, ndarray)
-        patmeta = dict(dct)
-        patmeta_not_none = {k: v for k, v in dct.items() if v is not None}
+        patmeta = dict(pattern_meta)
+        patmeta_not_none = {k: v for k, v in pattern_meta.items() if v is not None}
 
-        for of_bundle, wrt_bundle in product(*pattern_matches):
+        for abs_key in self._matching_key_iter(of, '*' if wrt is None else wrt):
+            if not dependent:
+                if abs_key in self._subjacs_info:
+                    del self._subjacs_info[abs_key]
+                continue
+
+            if abs_key in self._subjacs_info:
+                meta = self._subjacs_info[abs_key]
+                meta.update(patmeta_not_none)
+            else:
+                meta = patmeta.copy()
+
+            of, wrt = abs_key
+            meta['rows'] = rows
+            meta['cols'] = cols
+            csz = abs2meta_in[wrt]['size'] if wrt in abs2meta_in else abs2meta_out[wrt]['size']
+            meta['shape'] = shape = (abs2meta_out[of]['size'], csz)
+            dist_out = abs2meta_out[of]['distributed']
+            if wrt in abs2meta_in:
+                dist_in = abs2meta_in[wrt]['distributed']
+            else:
+                dist_in = abs2meta_out[wrt]['distributed']
+
+            if dist_in and not dist_out and not self.matrix_free:
+                rel_key = abs_key2rel_key(self, abs_key)
+                raise RuntimeError(f"{self.msginfo}: component has defined partial {rel_key} "
+                                   "which is a non-distributed output wrt a distributed input."
+                                   " This is only supported using the matrix free API.")
+
+            if shape[0] == 0 or shape[1] == 0:
+                msg = "{}: '{}' is an array of size 0"
+                if shape[0] == 0:
+                    if dist_out:
+                        # distributed vars are allowed to have zero size inputs on some procs
+                        rows_max = -1
+                    else:
+                        # non-distributed vars are not allowed to have zero size inputs
+                        raise ValueError(msg.format(self.msginfo, of))
+                if shape[1] == 0:
+                    if not dist_in:
+                        # non-distributed vars are not allowed to have zero size outputs
+                        raise ValueError(msg.format(self.msginfo, wrt))
+                    else:
+                        # distributed vars are allowed to have zero size outputs on some procs
+                        cols_max = -1
+
+            if val is None and not matfree:
+                # we can only get here if rows is None  (we're not sparse list format)
+                meta['val'] = np.zeros(shape)
+            elif is_array:
+                if rows is None and val.shape != shape and val.size == shape[0] * shape[1]:
+                    meta['val'] = val = val.copy().reshape(shape)
+                else:
+                    meta['val'] = val.copy()
+            elif is_scalar:
+                meta['val'] = np.full(shape, val, dtype=float)
+            else:
+                meta['val'] = val
+
+            if rows_max >= shape[0] or cols_max >= shape[1]:
+                of, wrt = abs_key2rel_key(self, abs_key)
+                raise ValueError(f"{self.msginfo}: d({of})/d({wrt}): Expected {shape[0]}x"
+                                 f"{shape[1]} but declared at least {rows_max + 1}x"
+                                 f"{cols_max + 1}")
+
+            self._check_partials_meta(abs_key, meta['val'],
+                                      shape if rows is None else (rows.shape[0], 1))
+
+            self._subjacs_info[abs_key] = meta
+
+    def _get_partials_wrts(self):
+        """
+        Get list of 'wrt' variables that form the partial jacobian.
+
+        Returns
+        -------
+        list
+            List of 'wrt' relative variable names.
+        """
+        # filter out any discrete inputs or outputs
+        if self._discrete_inputs:
+            return [n for n in self._var_rel_names['input'] if n not in self._discrete_inputs]
+
+        return list(self._var_rel_names['input'])
+
+    def _get_partials_ofs(self, use_resname=False):
+        """
+        Get lists of 'of' variables that form the partial jacobian.
+
+        Parameters
+        ----------
+        use_resname : bool
+            Ignored.
+
+        Returns
+        -------
+        list
+            List of 'of' relative variable names.
+        """
+        # filter out any discrete inputs or outputs
+        if self._discrete_outputs:
+            return [n for n in self._var_rel_names['output'] if n not in self._discrete_outputs]
+
+        return list(self._var_rel_names['output'])
+
+    def _matching_key_iter(self, of_patterns, wrt_patterns, use_resname=False):
+        """
+        Iterate over all combinations of matching keys for the given patterns.
+
+        Parameters
+        ----------
+        of_patterns : list of str
+            List of variable names and/or glob patterns for the 'of' variables.
+        wrt_patterns : list of str
+            List of variable names and/or glob patterns for the 'wrt' variables.
+        use_resname : bool, optional
+            If True, match of_patterns against residuals instead of outputs.
+
+        Yields
+        ------
+        tuple
+            A tuple of matching keys, where the first element is the 'of' key and the second
+            element is the 'wrt' key.  Both are absolute names.
+        """
+        of_bundles = self._find_of_matches(of_patterns, use_resname=use_resname)
+        wrt_bundles = self._find_wrt_matches(wrt_patterns)
+
+        for of_bundle, wrt_bundle in product(of_bundles, wrt_bundles):
             of_pattern, of_matches = of_bundle
             wrt_pattern, wrt_matches = wrt_bundle
             if not of_matches:
@@ -1501,107 +1607,46 @@ class Component(System):
             if not wrt_matches:
                 raise ValueError('{}: No matches were found for wrt="{}"'.format(self.msginfo,
                                                                                  wrt_pattern))
+            yield from abs_key_iter(self, of_matches, wrt_matches)
 
-            for abs_key in abs_key_iter(self, of_matches, wrt_matches):
-                if not dependent:
-                    if abs_key in self._subjacs_info:
-                        del self._subjacs_info[abs_key]
-                    continue
-
-                if abs_key in self._subjacs_info:
-                    meta = self._subjacs_info[abs_key]
-                    meta.update(patmeta_not_none)
-                else:
-                    meta = patmeta.copy()
-
-                of, wrt = abs_key
-                meta['rows'] = rows
-                meta['cols'] = cols
-                csz = abs2meta_in[wrt]['size'] if wrt in abs2meta_in else abs2meta_out[wrt]['size']
-                meta['shape'] = shape = (abs2meta_out[of]['size'], csz)
-                dist_out = abs2meta_out[of]['distributed']
-                if wrt in abs2meta_in:
-                    dist_in = abs2meta_in[wrt]['distributed']
-                else:
-                    dist_in = abs2meta_out[wrt]['distributed']
-
-                if dist_in and not dist_out and not self.matrix_free:
-                    rel_key = abs_key2rel_key(self, abs_key)
-                    raise RuntimeError(f"{self.msginfo}: component has defined partial {rel_key} "
-                                       "which is a non-distributed output wrt a distributed input."
-                                       " This is only supported using the matrix free API.")
-
-                if shape[0] == 0 or shape[1] == 0:
-                    msg = "{}: '{}' is an array of size 0"
-                    if shape[0] == 0:
-                        if dist_out:
-                            # distributed vars are allowed to have zero size inputs on some procs
-                            rows_max = -1
-                        else:
-                            # non-distributed vars are not allowed to have zero size inputs
-                            raise ValueError(msg.format(self.msginfo, of))
-                    if shape[1] == 0:
-                        if not dist_in:
-                            # non-distributed vars are not allowed to have zero size outputs
-                            raise ValueError(msg.format(self.msginfo, wrt))
-                        else:
-                            # distributed vars are allowed to have zero size outputs on some procs
-                            cols_max = -1
-
-                if val is None and not matfree:
-                    # we can only get here if rows is None  (we're not sparse list format)
-                    meta['val'] = np.zeros(shape)
-                elif is_array:
-                    if rows is None and val.shape != shape and val.size == shape[0] * shape[1]:
-                        meta['val'] = val = val.copy().reshape(shape)
-                    else:
-                        meta['val'] = val.copy()
-                elif is_scalar:
-                    meta['val'] = np.full(shape, val, dtype=float)
-                else:
-                    meta['val'] = val
-
-                if rows_max >= shape[0] or cols_max >= shape[1]:
-                    of, wrt = abs_key2rel_key(self, abs_key)
-                    raise ValueError(f"{self.msginfo}: d({of})/d({wrt}): Expected {shape[0]}x"
-                                     f"{shape[1]} but declared at least {rows_max + 1}x"
-                                     f"{cols_max + 1}")
-
-                self._check_partials_meta(abs_key, meta['val'],
-                                          shape if rows is None else (rows.shape[0], 1))
-
-                self._subjacs_info[abs_key] = meta
-
-    def _find_partial_matches(self, of_pattern, wrt_pattern, use_resname=False):
+    def _find_of_matches(self, pattern, use_resname=False):
         """
-        Find all partial derivative matches from of and wrt.
+        Find all matches for the given 'of' pattern.
 
         Parameters
         ----------
-        of_pattern : str or list of str
-            The relative name of the residual(s) that derivatives are being computed for.
-            May also contain a glob pattern.
-        wrt_pattern : str or list of str
-            The relative name of the variables that derivatives are taken with respect to.
-            This can contain the name of any input or output variable.
-            May also contain a glob pattern.
+        pattern : str
+            Glob pattern or relative variable name.
         use_resname : bool
-            If True, use residual names for 'of' patterns.
+            If True, match residual names instead of output names.
 
         Returns
         -------
-        tuple(list, list)
-            Pair of lists containing pattern matches (if any). Returns (of_matches, wrt_matches)
-            where of_matches is a list of tuples (pattern, matches) and wrt_matches is a list of
-            tuples (pattern, output_matches, input_matches).
+        list
+            List of tuples of the form (abs_name, meta) where abs_name is the absolute name of the
+            matching variable and meta is the metadata for that variable.
         """
-        of_list = [of_pattern] if isinstance(of_pattern, str) else of_pattern
-        wrt_list = [wrt_pattern] if isinstance(wrt_pattern, str) else wrt_pattern
-        ofs, wrts = self._get_partials_varlists(use_resname=use_resname)
+        of_list = [pattern] if isinstance(pattern, str) else pattern
+        return [(pattern, find_matches(pattern, self._get_partials_ofs(use_resname=use_resname)))
+                for pattern in of_list]
 
-        of_pattern_matches = [(pattern, find_matches(pattern, ofs)) for pattern in of_list]
-        wrt_pattern_matches = [(pattern, find_matches(pattern, wrts)) for pattern in wrt_list]
-        return of_pattern_matches, wrt_pattern_matches
+    def _find_wrt_matches(self, pattern):
+        """
+        Find all matches for the given 'wrt' pattern.
+
+        Parameters
+        ----------
+        pattern : str
+            Glob pattern or relative variable name.
+
+        Returns
+        -------
+        list
+            List of tuples of the form (abs_name, meta) where abs_name is the absolute name of the
+            matching variable and meta is the metadata for that variable.
+        """
+        wrt_list = [pattern] if isinstance(pattern, str) else pattern
+        return [(pattern, find_matches(pattern, self._get_partials_wrts())) for pattern in wrt_list]
 
     def _check_partials_meta(self, abs_key, val, shape):
         """
@@ -1672,8 +1717,6 @@ class Component(System):
             if coloring_mod._use_partial_sparsity:
                 coloring = self._get_coloring()
                 if coloring is not None:
-                    if not self._coloring_info['dynamic']:
-                        coloring._check_config_partial(self)
                     self._update_subjac_sparsity(coloring.get_subjac_sparsity())
                 if self._jacobian is not None:
                     self._jacobian._restore_approx_sparsity()
@@ -1735,7 +1778,7 @@ class Component(System):
         if self._serial_idxs is None:
             ranges = defaultdict(list)
             output_len = 0 if self.is_explicit() else len(self._outputs)
-            for name, offset, end, vec, slc, dist_sizes in self._jac_wrt_iter():
+            for _, offset, end, vec, slc, dist_sizes in self._jac_wrt_iter():
                 if dist_sizes is None:  # not distributed
                     if offset != end:
                         if vec is self._outputs:
@@ -1776,7 +1819,7 @@ class Component(System):
         """
         nzresids = []
         dresids = self._dresiduals.asarray()
-        for of, start, end, _full_slice, dist_sizes in self._jac_of_iter():
+        for of, start, end, _, dist_sizes in self._jac_of_iter():
             if dist_sizes is not None:
                 if np.any(dresids[start:end]):
                     nzresids.append(of)
@@ -1800,6 +1843,19 @@ class Component(System):
             True if this System should have fast relative variable name lookup in vectors.
         """
         return True
+
+    def _get_graph_node_meta(self):
+        """
+        Return metadata to add to this system's graph node.
+
+        Returns
+        -------
+        dict
+            Metadata for this system's graph node.
+        """
+        meta = super()._get_graph_node_meta()
+        meta['base'] = 'ExplicitComponent' if self.is_explicit() else 'ImplicitComponent'
+        return meta
 
 
 class _DictValues(object):

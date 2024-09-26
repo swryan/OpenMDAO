@@ -61,7 +61,7 @@ _plot_value_linewidth = 0.5
 _equality_constraint_dot_size = 3
 
 # overall image parameters and layout
-_sparkline_figsize = (3, .5)
+_sparkline_figsize = (3, 0.8)
 _scalar_visual_figsize = (2.0, .2)
 _plot_dpi = 150
 _plot_pad_inches = 0
@@ -130,16 +130,7 @@ def opt_report(prob, outfile=None):
 
     driver_scaling = True
 
-    # Collect data from the problem
-    abs2prom = prob.model._var_abs2prom
-
-    def get_prom_name(abs_name):
-        if abs_name in abs2prom['input']:
-            return abs2prom['input'][abs_name]
-        elif abs_name in abs2prom['output']:
-            return abs2prom['output'][abs_name]
-        else:
-            return abs_name
+    get_prom_name = prob.model._get_prom_name
 
     # Collect the entire array of array valued desvars and constraints (ignore indices)
     objs_vals = {}
@@ -216,7 +207,7 @@ def _make_header_table(prob):
     """
     t = datetime.datetime.now()
     time_stamp = t.strftime("%Y-%m-%d %H:%M:%S %Z")
-    runtime = prob.driver.opt_result['runtime']
+    runtime = prob.driver.result.runtime
     runtime_ms = (runtime * 1000.0) % 1000.0
     runtime_formatted = \
         f"{time.strftime('%H hours %M minutes %S seconds', time.gmtime(runtime))} " \
@@ -226,12 +217,12 @@ def _make_header_table(prob):
     rows.append(['Problem:', prob._name])
     rows.append(['Script:', sys.argv[0]])
     rows.append(['Optimizer:', prob.driver._get_name()])
-    rows.append(['Number of driver iterations:', prob.driver.opt_result['iter_count']])
-    rows.append(['Number of objective calls:', prob.driver.opt_result['obj_calls']])
-    rows.append(['Number of derivative calls:', prob.driver.opt_result['deriv_calls']])
+    rows.append(['Number of driver iterations:', prob.driver.result.iter_count])
+    rows.append(['Number of model evals:', prob.driver.result.model_evals])
+    rows.append(['Number of deriv evals:', prob.driver.result.deriv_evals])
     rows.append(['Execution start time:', time_stamp])
     rows.append(['Wall clock run time:', runtime_formatted])
-    rows.append(['Exit status:', prob.driver.opt_result['exit_status']])
+    rows.append(['Exit status:', prob.driver.result.exit_status])
 
     return generate_table(rows, tablefmt='html')
 
@@ -675,7 +666,14 @@ def _constraint_plot(kind, meta, val, width=300):
         raise ValueError("Value for the _constraint_plot function must be a "
                          f"scalar. Variable {meta['name']} is not a scalar")
     else:
-        val = val.item()
+        try:
+            val = val.item()
+        except AttributeError:
+            pass  # handle other than ndarray, e.g. int
+
+    # If lower and upper bounds are None, return an HTML snippet indicating the issue
+    if kind == 'constraint' and meta['upper'] == INF_BOUND and meta['lower'] == -INF_BOUND:
+        return '<span class="bounds-unavailable">Both lower and upper bounds are None.</span>'
 
     if kind == 'desvar' and meta['upper'] == INF_BOUND and meta['lower'] == -INF_BOUND:
         return   # nothing to plot
@@ -812,8 +810,6 @@ def var_bounds_plot(kind, ax, value, lower, upper):
     #  - value much greater than upper
 
     # also need to handle one-sided constraints where only one of lower and upper is given
-    if kind == 'constraint' and upper == INF_BOUND and lower == -INF_BOUND:
-        raise ValueError("Upper and lower bounds cannot all be None for a constraint")
 
     # Basic plot setup
     plt.rcParams['hatch.linewidth'] = _out_of_bounds_hatch_width  # can't seem to do this any other

@@ -4,10 +4,13 @@ from collections import defaultdict
 import numpy as np
 
 from openmdao.core.constants import INT_DTYPE
-from openmdao.utils.array_utils import get_input_idx_split
+from openmdao.vectors.vector import _full_slice
+from openmdao.utils.array_utils import get_input_idx_split, ValueRepeater
 import openmdao.utils.coloring as coloring_mod
 from openmdao.utils.general_utils import _convert_auto_ivc_to_conn_name, LocalRangeIterable
 from openmdao.utils.mpi import check_mpi_env
+from openmdao.utils.rangemapper import RangeMapper
+
 
 use_mpi = check_mpi_env()
 if use_mpi is False:
@@ -38,9 +41,6 @@ class ApproximationScheme(object):
         A dict that maps wrt name to its fd/cs metadata.
     _progress_out : None or file-like object
         Attribute to output the progress of check_totals
-    _during_sparsity_comp : bool
-        If True, we're doing a sparsity computation and uncolored approxs need to be restricted
-        to only colored columns.
     _jac_scatter : tuple
         Data needed to scatter values from results array to a total jacobian column.
     _totals_directions : dict
@@ -60,7 +60,6 @@ class ApproximationScheme(object):
         self._approx_groups_cached_under_cs = False
         self._wrt_meta = {}
         self._progress_out = None
-        self._during_sparsity_comp = False
         self._jac_scatter = None
         self._totals_directions = {}
         self._totals_directional_mode = None
@@ -82,7 +81,6 @@ class ApproximationScheme(object):
         """
         self._colored_approx_groups = None
         self._approx_groups = None
-        self._during_sparsity_comp = False
 
     def _get_approx_groups(self, system, under_cs=False):
         """
@@ -134,39 +132,43 @@ class ApproximationScheme(object):
         raise NotImplementedError("add_approximation has not been implemented")
 
     def _init_colored_approximations(self, system):
-        is_group = _is_group(system)
-        is_total = is_group and system.pathname == ''
+        is_total = system.pathname == ''
+        is_semi = _is_group(system) and not is_total
         self._colored_approx_groups = []
+        wrt_ranges = []
 
-        # don't do anything if the coloring doesn't exist yet
-        coloring = system._coloring_info['coloring']
-        if not isinstance(coloring, coloring_mod.Coloring):
+        # don't do anything if the coloring doesn't exist yet, or if there is no
+        # forward coloring
+        coloring = system._coloring_info.coloring
+        if not isinstance(coloring, coloring_mod.Coloring) or coloring._fwd is None:
             return
 
-        system._update_wrt_matches(system._coloring_info)
-        wrt_matches = system._coloring_info['wrt_matches']
+        wrt_matches = system._coloring_info._update_wrt_matches(system)
         out_slices = system._outputs.get_slice_dict()
 
+        # this maps column indices into colored jac into indices into full jac
         if wrt_matches is not None:
-            # this maps column indices into colored jac into indices into full jac
             ccol2jcol = np.empty(coloring._shape[1], dtype=INT_DTYPE)
 
-            # colored col to out vec idx
-            if is_total:
-                ccol2vcol = np.empty(coloring._shape[1], dtype=INT_DTYPE)
+        # colored col to out vec idx
+        if is_total:
+            ccol2outvec = np.empty(coloring._shape[1], dtype=INT_DTYPE)
 
-            ordered_wrt_iter = list(system._jac_wrt_iter())
+        if is_total or wrt_matches is not None:
             colored_start = colored_end = 0
-            for abs_wrt, cstart, cend, _, cinds, _ in ordered_wrt_iter:
+            for abs_wrt, cstart, cend, _, cinds, _ in system._jac_wrt_iter():
                 if wrt_matches is None or abs_wrt in wrt_matches:
                     colored_end += cend - cstart
-                    ccol2jcol[colored_start:colored_end] = np.arange(cstart, cend, dtype=INT_DTYPE)
+                    if wrt_matches is not None:
+                        ccol2jcol[colored_start:colored_end] = range(cstart, cend)
                     if is_total and abs_wrt in out_slices:
                         slc = out_slices[abs_wrt]
-                        rng = np.arange(slc.start, slc.stop)
                         if cinds is not None:
-                            rng = rng[cinds]
-                        ccol2vcol[colored_start:colored_end] = rng
+                            rng = np.arange(slc.start, slc.stop)[cinds]
+                        else:
+                            rng = range(slc.start, slc.stop)
+                        wrt_ranges.append((abs_wrt, slc.stop - slc.start))
+                        ccol2outvec[colored_start:colored_end] = rng
                     colored_start = colored_end
 
         row_var_sizes = {v: sz for v, sz in zip(coloring._row_vars, coloring._row_var_sizes)}
@@ -174,9 +176,10 @@ class ApproximationScheme(object):
         abs2prom = system._var_allprocs_abs2prom['output']
 
         if is_total:
-            it = [(of, end - start) for of, start, end, _, _ in system._jac_of_iter()]
+            it = ((of, end - start) for of, start, end, _, _ in system._jac_of_iter())
+            rangemapper = RangeMapper.create(wrt_ranges)
         else:
-            it = [(n, arr.size) for n, arr in system._outputs._abs_item_iter()]
+            it = ((n, arr.size) for n, arr in system._outputs._abs_item_iter())
 
         start = end = colorstart = colorend = 0
         for name, sz in it:
@@ -184,7 +187,7 @@ class ApproximationScheme(object):
             prom = name if is_total else abs2prom[name]
             if prom in row_var_sizes:
                 colorend += row_var_sizes[prom]
-                row_map[colorstart:colorend] = np.arange(start, end, dtype=INT_DTYPE)
+                row_map[colorstart:colorend] = range(start, end)
                 colorstart = colorend
             start = end
 
@@ -198,18 +201,19 @@ class ApproximationScheme(object):
         inputs = system._inputs
 
         from openmdao.core.implicitcomponent import ImplicitComponent
-        is_semi = is_group and not is_total
         use_full_cols = is_semi or isinstance(system, ImplicitComponent)
 
         for cols, nzrows in coloring.color_nonzero_iter('fwd'):
             nzrows = [row_map[r] for r in nzrows]
             jaccols = cols if wrt_matches is None else ccol2jcol[cols]
             if is_total:
-                vcols = ccol2vcol[cols]
+                vcols = ccol2outvec[cols]
+                seed_vars = tuple(rangemapper.inds2keys(cols))
             else:
                 vcols = jaccols
+                seed_vars = None
             vec_ind_list = get_input_idx_split(vcols, inputs, outputs, use_full_cols, is_total)
-            self._colored_approx_groups.append((data, jaccols, vec_ind_list, nzrows))
+            self._colored_approx_groups.append((data, jaccols, vec_ind_list, nzrows, seed_vars))
 
     def _init_approximations(self, system):
         """
@@ -221,19 +225,17 @@ class ApproximationScheme(object):
             The system having its derivs approximated.
         """
         total = system.pathname == ''
-        abs2meta = system._var_allprocs_abs2meta
 
         in_slices = system._inputs.get_slice_dict()
         out_slices = system._outputs.get_slice_dict()
 
-        approx_wrt_idx = system._owns_approx_wrt_idx
         coloring = system._get_static_coloring()
 
         self._approx_groups = []
         self._nruns_uncolored = 0
 
-        if self._during_sparsity_comp:
-            wrt_matches = system._coloring_info['wrt_matches']
+        if system._during_sparsity:
+            wrt_matches = system._coloring_info.wrt_matches
         else:
             wrt_matches = None
 
@@ -242,7 +244,8 @@ class ApproximationScheme(object):
             in_inds_directional = []
             vec_inds_directional = defaultdict(list)
 
-        for wrt, start, end, vec, _, _ in system._jac_wrt_iter(wrt_matches):
+        # wrt here is an absolute name (source if total)
+        for wrt, start, end, vec, sinds, _ in system._jac_wrt_iter(wrt_matches):
             if wrt in self._wrt_meta:
                 meta = self._wrt_meta[wrt]
                 if coloring is not None and 'coloring' in meta:
@@ -257,12 +260,12 @@ class ApproximationScheme(object):
 
                 in_idx = range(start, end)
 
-                if wrt in approx_wrt_idx:
+                if total and sinds is not _full_slice:
                     if vec is None:
-                        vec_idx = None
+                        vec_idx = ValueRepeater(None, sinds.size)
                     else:
                         # local index into var
-                        vec_idx = approx_wrt_idx[wrt].shaped_array(copy=True)
+                        vec_idx = sinds.copy()
                         # convert into index into input or output vector
                         vec_idx += slices[wrt].start
                         # Directional derivatives for quick deriv checking.
@@ -271,15 +274,9 @@ class ApproximationScheme(object):
                             in_idx = [list(in_idx)]
                             vec_idx = [vec_idx]
                 else:
-                    if vec is None:  # remote wrt
-                        if wrt in abs2meta['input']:
-                            vec_idx = range(abs2meta['input'][wrt]['global_size'])
-                        else:
-                            vec_idx = range(abs2meta['output'][wrt]['global_size'])
-                    else:
-                        vec_idx = LocalRangeIterable(system, wrt)
-                        if directional:
-                            vec_idx = [v for v in vec_idx if v is not None]
+                    vec_idx = LocalRangeIterable(system, wrt)
+                    if directional and vec is not None:
+                        vec_idx = [v for v in vec_idx if v is not None]
 
                     # Directional derivatives for quick deriv checking.
                     # Place the indices in a list so that they are all stepped at the same time.
@@ -302,8 +299,8 @@ class ApproximationScheme(object):
                         direction = self._totals_directions['fwd'][start:end]
                     else:
                         direction = meta['vector']
-                    self._approx_groups.append((wrt, data, in_idx, [(vec, vec_idx)], directional,
-                                                direction))
+                    self._approx_groups.append(((wrt,) if directional else wrt, data, in_idx,
+                                                [(vec, vec_idx)], directional, direction))
 
         if total:
             if self._totals_directional_mode == 'rev':
@@ -317,11 +314,11 @@ class ApproximationScheme(object):
             sinds, tinds, colsize, has_dist_data = system._get_jac_col_scatter()
             if has_dist_data:
                 src_vec = PETSc.Vec().createWithArray(np.zeros(len(system._outputs), dtype=float),
-                                                      comm=system.comm)
+                                                      comm=system._comm)
                 tgt_vec = PETSc.Vec().createWithArray(np.zeros(colsize, dtype=float),
-                                                      comm=system.comm)
-                src_inds = PETSc.IS().createGeneral(sinds, comm=system.comm)
-                tgt_inds = PETSc.IS().createGeneral(tinds, comm=system.comm)
+                                                      comm=system._comm)
+                src_inds = PETSc.IS().createGeneral(sinds, comm=system._comm)
+                tgt_inds = PETSc.IS().createGeneral(tinds, comm=system._comm)
                 self._jac_scatter = (has_dist_data,
                                      PETSc.Scatter().create(src_vec, src_inds, tgt_vec, tgt_inds),
                                      src_vec, tgt_vec)
@@ -352,8 +349,8 @@ class ApproximationScheme(object):
         ndarray
             solution array corresponding to the jacobian column at the given column index
         """
-        total_or_semi = _is_group(system)
         total = system.pathname == ''
+        total_or_semi = total or _is_group(system)
 
         if total:
             tot_result = np.zeros(sum([end - start for _, start, end, _, _
@@ -376,12 +373,14 @@ class ApproximationScheme(object):
         nruns = len(colored_approx_groups)
         tosend = None
 
-        for data, jcols, vec_ind_list, nzrows in colored_approx_groups:
+        for data, jcols, vec_ind_list, nzrows, seed_vars, in colored_approx_groups:
             mult = self._get_multiplier(data)
 
             if fd_count % num_par_fd == system._par_fd_id:
                 # run the finite difference
-                result = self._run_point(system, vec_ind_list, data, results_array, total_or_semi)
+                with system._relevance.seeds_active(fwd_seeds=seed_vars):
+                    result = self._run_point(system, vec_ind_list, data, results_array,
+                                             total_or_semi)
 
                 if par_fd_w_serial_model or not use_parallel_fd:
                     result = self._transform_result(result)
@@ -416,7 +415,7 @@ class ApproximationScheme(object):
 
                 i, res = tup
 
-                _, jcols, _, nzrows = colored_approx_groups[i]
+                _, jcols, _, nzrows, _ = colored_approx_groups[i]
 
                 for i, col in enumerate(jcols):
                     scratch[:] = 0.0
@@ -445,6 +444,8 @@ class ApproximationScheme(object):
             entry = [[None, None]]
             ent0 = entry[0]
             for vec, vec_idxs in vec_ind_list:
+                if vec_idxs is None:
+                    continue
                 for vinds in vec_idxs:
                     ent0[0] = vec
                     ent0[1] = vinds
@@ -452,7 +453,7 @@ class ApproximationScheme(object):
 
     def _uncolored_column_iter(self, system, approx_groups):
         """
-        Perform approximations and yields (column_index, column) for each jac column.
+        Perform approximations and yield (column_index, column) for each jac column.
 
         Parameters
         ----------
@@ -477,9 +478,10 @@ class ApproximationScheme(object):
             solution array corresponding to the jacobian column at the given column index
         """
         total = system.pathname == ''
-        ordered_of_iter = list(system._jac_of_iter())
         if total:
-            tot_result = np.zeros(ordered_of_iter[-1][2])
+            for _, _, end, _, _ in system._jac_of_iter():
+                pass
+            tot_result = np.zeros(end)
 
         total_or_semi = total or _is_group(system)
 
@@ -513,9 +515,16 @@ class ApproximationScheme(object):
 
                 if fd_count % num_par_fd == system._par_fd_id:
                     # run the finite difference
-                    result = self._run_point(system, vec_ind_info,
-                                             app_data, results_array, total_or_semi,
-                                             jcol_idxs)
+                    if total:
+                        seeds = wrt if directional else (wrt,)
+                        with system._relevance.seeds_active(fwd_seeds=seeds):
+                            result = self._run_point(system, vec_ind_info,
+                                                     app_data, results_array, total_or_semi,
+                                                     jcol_idxs)
+                    else:
+                        result = self._run_point(system, vec_ind_info,
+                                                 app_data, results_array, total_or_semi,
+                                                 jcol_idxs)
 
                     result = self._transform_result(result)
 
@@ -582,15 +591,14 @@ class ApproximationScheme(object):
         if not self._wrt_meta:
             return
 
-        if jac is None:
+        if system._tot_jac is not None:
+            jac = system._tot_jac
+        elif jac is None:
             jac = system._jacobian
 
         for ic, col in self.compute_approx_col_iter(system,
                                                     under_cs=system._outputs._under_complex_step):
-            if system._tot_jac is None:
-                jac.set_col(system, ic, col)
-            else:
-                system._tot_jac.set_col(ic, col)
+            jac.set_col(system, ic, col)
 
     def _compute_approx_col_iter(self, system, under_cs):
         # This will either generate new approx groups or use cached ones

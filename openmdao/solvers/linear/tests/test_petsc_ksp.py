@@ -187,7 +187,7 @@ class TestPETScKrylov(unittest.TestCase):
         """Solve implicit system with PETScKrylov using a preconditioner."""
 
         group = TestImplicitGroup(lnSolverClass=om.PETScKrylov)
-        precon = group.linear_solver.precon = om.DirectSolver(assemble_jac=False)
+        group.linear_solver.precon = om.DirectSolver(assemble_jac=False)
         group.linear_solver.options['precon_side'] = 'left'
         group.linear_solver.options['ksp_type'] = 'richardson'
 
@@ -219,7 +219,7 @@ class TestPETScKrylov(unittest.TestCase):
         assert_near_equal(output, group.expected_solution, 3e-15)
 
         # test the direct solver and make sure KSP correctly recurses for _linearize
-        precon = group.linear_solver.precon = om.DirectSolver(assemble_jac=False)
+        group.linear_solver.precon = om.DirectSolver(assemble_jac=False)
         group.linear_solver.options['precon_side'] = 'left'
         group.linear_solver.options['ksp_type'] = 'richardson'
 
@@ -310,11 +310,9 @@ class TestPETScKrylov(unittest.TestCase):
         prob.set_solver_print(level=0)
         prob.run_model()
 
-        J = prob.driver._compute_totals(of=['y'], wrt=['x'], use_abs_names=False,
-                                        return_format='flat_dict')
+        prob.driver._compute_totals(of=['y'], wrt=['x'], return_format='flat_dict')
         icount1 = prob.model.linear_solver._iter_count
-        J = prob.driver._compute_totals(of=['y'], wrt=['x'], use_abs_names=False,
-                                        return_format='flat_dict')
+        prob.driver._compute_totals(of=['y'], wrt=['x'], return_format='flat_dict')
         icount2 = prob.model.linear_solver._iter_count
 
         # Should take less iterations when starting from previous solution.
@@ -338,11 +336,9 @@ class TestPETScKrylov(unittest.TestCase):
         prob.set_solver_print(level=0)
         prob.run_model()
 
-        J = prob.driver._compute_totals(of=['y'], wrt=['x'], use_abs_names=False,
-                                        return_format='flat_dict')
+        prob.driver._compute_totals(of=['y'], wrt=['x'], return_format='flat_dict')
         icount1 = prob.model.linear_solver._iter_count
-        J = prob.driver._compute_totals(of=['y'], wrt=['x'], use_abs_names=False,
-                                        return_format='flat_dict')
+        prob.driver._compute_totals(of=['y'], wrt=['x'], return_format='flat_dict')
         icount2 = prob.model.linear_solver._iter_count
 
         # Should take less iterations when starting from previous solution.
@@ -379,7 +375,7 @@ class TestPETScKrylov(unittest.TestCase):
         prob.run_model()
 
         with self.assertRaises(RuntimeError) as cm:
-            J = prob.compute_totals(of=['obj'], wrt=['z'])
+            prob.compute_totals(of=['obj'], wrt=['z'])
 
         msg = 'PETScKrylov in <model> <class Group>: PETScKrylov solver is not supported under complex step.'
         self.assertEqual(str(cm.exception), msg)
@@ -476,6 +472,7 @@ class TestPETScKrylovSolverFeature(unittest.TestCase):
 
         model.linear_solver = om.PETScKrylov()
         model.linear_solver.options['maxiter'] = 3
+        model.linear_solver.options['err_on_non_converge'] = True
 
         prob.setup()
 
@@ -487,9 +484,11 @@ class TestPETScKrylovSolverFeature(unittest.TestCase):
         wrt = ['z']
         of = ['obj']
 
-        J = prob.compute_totals(of=of, wrt=wrt, return_format='flat_dict')
-        assert_near_equal(J['obj', 'z'][0][0], 4.93218027, .00001)
-        assert_near_equal(J['obj', 'z'][0][1], 1.73406455, .00001)
+        with self.assertRaises(om.AnalysisError) as cm:
+            prob.compute_totals(of=of, wrt=wrt, return_format='flat_dict')
+
+        msg = "Solver 'LN: PETScKrylov' on system '' failed to converge in 4 iterations."
+        self.assertEqual(str(cm.exception), msg)
 
     def test_feature_atol(self):
 

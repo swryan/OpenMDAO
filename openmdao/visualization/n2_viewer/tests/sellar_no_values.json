@@ -13,6 +13,7 @@
         "debug_print": false,
         "stall_limit": 0,
         "stall_tol": 1e-12,
+        "stall_tol_type": "rel",
         "restart_from_successful": false,
         "solve_subsystems": false,
         "max_sub_solves": 10,
@@ -28,7 +29,8 @@
         "err_on_non_converge": false,
         "assemble_jac": false,
         "solver": "gmres",
-        "restart": 20
+        "restart": 20,
+        "rhs_checking": false
     },
     "component_type": null,
     "subsystem_type": "group",
@@ -107,7 +109,8 @@
                 "err_on_non_converge": false,
                 "assemble_jac": false,
                 "solver": "gmres",
-                "restart": 20
+                "restart": 20,
+                "rhs_checking": false
             },
             "component_type": null,
             "subsystem_type": "group",
@@ -131,7 +134,8 @@
                         "err_on_non_converge": false,
                         "assemble_jac": false,
                         "solver": "gmres",
-                        "restart": 20
+                        "restart": 20,
+                        "rhs_checking": false
                     },
                     "component_type": null,
                     "subsystem_type": "group",
@@ -371,7 +375,6 @@
                 }
             ],
             "options": {
-                "distributed": false,
                 "run_root_only": false,
                 "always_opt": false,
                 "has_diag_partials": false,
@@ -419,7 +422,6 @@
                 }
             ],
             "options": {
-                "distributed": false,
                 "run_root_only": false,
                 "always_opt": false,
                 "has_diag_partials": false,
@@ -467,7 +469,6 @@
                 }
             ],
             "options": {
-                "distributed": false,
                 "run_root_only": false,
                 "always_opt": false,
                 "has_diag_partials": false,

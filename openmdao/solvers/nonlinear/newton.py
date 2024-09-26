@@ -1,12 +1,8 @@
 """Define the NewtonSolver class."""
 
-
-import numpy as np
-
 from openmdao.solvers.linesearch.backtracking import BoundsEnforceLS
 from openmdao.solvers.solver import NonlinearSolver
 from openmdao.recorders.recording_iteration_stack import Recording
-from openmdao.utils.mpi import MPI
 
 
 class NewtonSolver(NonlinearSolver):
@@ -25,7 +21,7 @@ class NewtonSolver(NonlinearSolver):
     linear_solver : LinearSolver
         Linear solver to use to find the Newton search direction. The default
         is the parent system's linear solver.
-    linesearch : NonlinearSolver
+    _linesearch : NonlinearSolver
         Line search algorithm. Default is None for no line search.
     """
 
@@ -37,11 +33,8 @@ class NewtonSolver(NonlinearSolver):
         """
         super().__init__(**kwargs)
 
-        # Slot for linear solver
         self.linear_solver = None
-
-        # Slot for linesearch
-        self.linesearch = BoundsEnforceLS()
+        self._linesearch = BoundsEnforceLS()
 
     def _declare_options(self):
         """
@@ -61,6 +54,7 @@ class NewtonSolver(NonlinearSolver):
                              'AnalysisError that arises during subsolve; when false, it will '
                              'continue solving.')
 
+        self.supports['linesearch'] = True
         self.supports['gradients'] = True
         self.supports['implicit_components'] = True
 
@@ -76,7 +70,6 @@ class NewtonSolver(NonlinearSolver):
             depth of the current system (already incremented).
         """
         super()._setup_solvers(system, depth)
-        rank = MPI.COMM_WORLD.rank if MPI is not None else 0
 
         self._disallow_discrete_outputs()
 
@@ -138,8 +131,8 @@ class NewtonSolver(NonlinearSolver):
         finally:
             self._recording_iter.pop()
 
-        # Enable local fd
-        system._owns_approx_jac = approx_status
+            # Enable local fd
+            system._owns_approx_jac = approx_status
 
     def _linearize_children(self):
         """
@@ -150,7 +143,7 @@ class NewtonSolver(NonlinearSolver):
         bool
             Flag for indicating child linerization
         """
-        return (self.options['solve_subsystems'] and not system.under_complex_step
+        return (self.options['solve_subsystems'] and not self._system().under_complex_step
                 and self._iter_count <= self.options['max_sub_solves'])
 
     def _linearize(self):
@@ -183,7 +176,7 @@ class NewtonSolver(NonlinearSolver):
 
         # Execute guess_nonlinear if specified and
         # we have not restarted from a saved point
-        if not self._restarted:
+        if not self._restarted and system._has_guess:
             system._guess_nonlinear()
 
         with Recording('Newton_subsolve', 0, self) as rec:
@@ -220,35 +213,37 @@ class NewtonSolver(NonlinearSolver):
         approx_status = system._owns_approx_jac
         system._owns_approx_jac = False
 
-        system._dresiduals.set_vec(system._residuals)
-        system._dresiduals *= -1.0
-        my_asm_jac = self.linear_solver._assembled_jac
+        try:
+            system._dresiduals.set_vec(system._residuals)
+            system._dresiduals *= -1.0
+            my_asm_jac = self.linear_solver._assembled_jac
 
-        system._linearize(my_asm_jac, sub_do_ln=do_sub_ln)
-        if (my_asm_jac is not None and system.linear_solver._assembled_jac is not my_asm_jac):
-            my_asm_jac._update(system)
+            system._linearize(my_asm_jac, sub_do_ln=do_sub_ln)
+            if (my_asm_jac is not None and
+                    system.linear_solver._assembled_jac is not my_asm_jac):
+                my_asm_jac._update(system)
 
-        self._linearize()
+            self._linearize()
 
-        self.linear_solver.solve('fwd')
+            self.linear_solver.solve('fwd')
 
-        if self.linesearch and not system.under_complex_step:
-            self.linesearch._do_subsolve = do_subsolve
-            self.linesearch.solve()
-        else:
-            system._outputs += system._doutputs
+            if self.linesearch and not system.under_complex_step:
+                self.linesearch._do_subsolve = do_subsolve
+                self.linesearch.solve()
+            else:
+                system._outputs += system._doutputs
 
-        self._solver_info.pop()
+            self._solver_info.pop()
 
-        # Hybrid newton support.
-        if do_subsolve:
-            with Recording('Newton_subsolve', 0, self):
-                self._solver_info.append_solver()
-                self._gs_iter()
-                self._solver_info.pop()
-
-        # Enable local fd
-        system._owns_approx_jac = approx_status
+            # Hybrid newton support.
+            if do_subsolve:
+                with Recording('Newton_subsolve', 0, self):
+                    self._solver_info.append_solver()
+                    self._gs_iter()
+                    self._solver_info.pop()
+        finally:
+            # Enable local fd
+            system._owns_approx_jac = approx_status
 
     def _set_complex_step_mode(self, active):
         """
@@ -276,3 +271,14 @@ class NewtonSolver(NonlinearSolver):
             self.linear_solver.cleanup()
         if self.linesearch:
             self.linesearch.cleanup()
+
+    def use_relevance(self):
+        """
+        Return True if relevance should be active.
+
+        Returns
+        -------
+        bool
+            True if relevance should be active.
+        """
+        return False

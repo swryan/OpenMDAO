@@ -1,6 +1,5 @@
 """ Test out some crucial linear GS tests in parallel with distributed comps."""
 
-from openmdao.jacobians.jacobian import Jacobian
 import unittest
 import itertools
 
@@ -11,11 +10,11 @@ from openmdao.test_suite.components.distributed_components import DistribCompDer
 from openmdao.test_suite.components.paraboloid_distributed import DistParab, DistParabFeature, \
     DistParabDeprecated
 from openmdao.utils.mpi import MPI
-from openmdao.utils.om_warnings import OMDeprecationWarning
 from openmdao.utils.name_maps import rel_name2abs_name
 from openmdao.utils.array_utils import evenly_distrib_idxs
 from openmdao.utils.assert_utils import assert_near_equal, assert_check_partials, \
-    assert_check_totals, assert_warning
+    assert_check_totals
+from openmdao.utils.testing_utils import use_tempdirs
 
 try:
     from pyoptsparse import Optimization as pyoptsparse_opt
@@ -32,76 +31,11 @@ try:
 except ImportError:
     PETScVector = None
 
-if MPI:
-    rank = MPI.COMM_WORLD.rank
-else:
-    rank = 0
-
-
-class DistribExecComp(om.ExecComp):
-    """
-    An ExecComp that uses N procs and takes input var slices.  Unlike a normal
-    ExecComp, it only supports a single expression per proc.  If you give it
-    multiple expressions, it will use a different one in each proc, repeating
-    the last one in any remaining procs.
-    """
-
-    def __init__(self, exprs, arr_size=11, **kwargs):
-        super().__init__(exprs, **kwargs)
-        self.arr_size = arr_size
-        self.options['distributed'] = True
-
-    def setup(self):
-        outs = set()
-        allvars = set()
-        exprs = self._exprs
-        kwargs = self._kwargs
-
-        comm = self.comm
-        rank = comm.rank
-
-        if len(self._exprs) > comm.size:
-            raise RuntimeError("DistribExecComp only supports up to 1 expression per MPI process.")
-
-        if len(self._exprs) < comm.size:
-            # repeat the last expression for any leftover procs
-            self._exprs.extend([self._exprs[-1]] * (comm.size - len(self._exprs)))
-
-        self._exprs = [self._exprs[rank]]
-
-        # find all of the variables and which ones are outputs
-        for expr in exprs:
-            lhs, _ = expr.split('=', 1)
-            outs.update(self._parse_for_out_vars(lhs))
-            v, _ = self._parse_for_names(expr)
-            allvars.update(v)
-
-        sizes, offsets = evenly_distrib_idxs(comm.size, self.arr_size)
-        start = offsets[rank]
-        end = start + sizes[rank]
-
-        for name in outs:
-            if name not in kwargs or not isinstance(kwargs[name], dict):
-                kwargs[name] = {}
-            kwargs[name]['val'] = np.ones(sizes[rank], float)
-
-        for name in allvars:
-            if name not in outs:
-                if name not in kwargs or not isinstance(kwargs[name], dict):
-                    kwargs[name] = {}
-                meta = kwargs[name]
-                meta['val'] = np.ones(sizes[rank], float)
-
-        super().setup()
-
 
 class DistribCoordComp(om.ExplicitComponent):
 
     def setup(self):
-        comm = self.comm
-        rank = comm.rank
-
-        if rank == 0:
+        if self.comm.rank == 0:
             self.add_input('invec', np.zeros((5, 3)), distributed=True)
             self.add_output('outvec', np.zeros((5, 3)), distributed=True)
         else:
@@ -113,6 +47,37 @@ class DistribCoordComp(om.ExplicitComponent):
             outputs['outvec'] = inputs['invec'] * 2.0
         else:
             outputs['outvec'] = inputs['invec'] * 3.0
+
+
+class SimpleMixedDistrib2(om.ExplicitComponent):
+
+    def setup(self):
+        self.add_input('in_dist', shape_by_conn=True, distributed=True)
+        self.add_input('in_nd', shape_by_conn=True)
+        self.add_output('out_dist', copy_shape='in_dist', distributed=True)
+        self.add_output('out_nd', copy_shape='in_nd')
+
+    def compute(self, inputs, outputs):
+        outputs['out_nd'] = inputs['in_nd'] * 3.
+        outputs['out_dist'] = inputs['in_dist'] * 5.
+
+    def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
+        if mode == 'fwd':
+            if 'out_dist' in d_outputs:
+                if 'in_dist' in d_inputs:
+                    d_outputs['out_dist'] += 5. * d_inputs['in_dist']
+            if 'out_nd' in d_outputs:
+                if 'in_nd' in d_inputs:
+                    d_outputs['out_nd'] += 3. * d_inputs['in_nd']
+
+        else:
+            if 'out_dist' in d_outputs:
+                if 'in_dist' in d_inputs:
+                    d_inputs['in_dist'] += 5. * d_outputs['out_dist']
+
+            if 'out_nd' in d_outputs:
+                if 'in_nd' in d_inputs:
+                    d_inputs['in_nd'] += 3. * d_outputs['out_nd']
 
 
 class MixedDistrib2(om.ExplicitComponent):  # for double diamond case
@@ -179,18 +144,146 @@ class MixedDistrib2(om.ExplicitComponent):  # for double diamond case
                     d_inputs['in_nd'] += dg_dIs * d_outputs['out_nd']
 
 
+def _setup_ivc_subivc_dist_parab_sum():
+    size = 7
+
+    prob = om.Problem()
+    model = prob.model
+
+    ivc = om.IndepVarComp()
+    ivc.add_output('x', np.ones((size, )))
+    ivc.add_output('y', np.ones((size, )))
+
+    model.add_subsystem('p', ivc, promotes=['*'])
+    sub = model.add_subsystem('sub', om.Group(), promotes=['*'])
+
+    ivc2 = om.IndepVarComp()
+    ivc2.add_output('a', -3.0 + 0.6 * np.arange(size))
+
+    sub.add_subsystem('p2', ivc2, promotes=['*'])
+    sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                            x=np.ones(size), xd=np.ones(size),
+                                            y=np.ones(size), yd=np.ones(size)),
+                        promotes_inputs=['*'])
+
+    sub.add_subsystem("parab", DistParab(arr_size=size), promotes_outputs=['*'], promotes_inputs=['a'])
+    model.add_subsystem('sum', om.ExecComp('f_sum = sum(xd)',
+                                            f_sum=np.ones((size, )),
+                                            xd=np.ones((size, ))),
+                        promotes_outputs=['*'])
+
+    model.promotes('sum', inputs=['xd'])
+
+    sub.connect('dummy.xd', 'parab.x')
+    sub.connect('dummy.yd', 'parab.y')
+
+    model.add_design_var('x', lower=-50.0, upper=50.0)
+    model.add_design_var('y', lower=-50.0, upper=50.0)
+    model.add_constraint('f_xy', lower=0.0)
+    model.add_objective('f_sum', index=-1)
+
+    sub.approx_totals(method='fd')
+
+    return prob
+
+
+def _setup_ivc_sub_ivcdistparabcons_nosum():
+    # distrib comp is inside of fd group but not a response, and 2 nondistrib
+    # constraints connect to it downstream, both inside and outside of the fd group.
+    size = 7
+
+    prob = om.Problem()
+    model = prob.model
+
+    ivc = om.IndepVarComp()
+    ivc.add_output('x', np.ones((size, )))
+    ivc.add_output('y', np.ones((size, )))
+
+    model.add_subsystem('p', ivc)
+    sub = model.add_subsystem('sub', om.Group())
+
+    sub.add_subsystem('p2', om.IndepVarComp('a', -3.0 + 0.6 * np.arange(size)))
+    sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                            x=np.ones(size), xd=np.ones(size),
+                                            y=np.ones(size), yd=np.ones(size)))
+
+    sub.add_subsystem("parab", DistParab(arr_size=size))
+    sub.add_subsystem("cons", om.ExecComp("c = x*3. + 7.", x=np.ones(size), c=np.ones(size)))
+    # model.add_subsystem('sum', om.ExecComp('f_sum = sum(f_xy)', f_sum=np.ones((size, )), f_xy=np.ones((size, ))))
+
+    model.connect('p.x', 'sub.dummy.x')
+    model.connect('p.y', 'sub.dummy.y')
+    model.connect('sub.p2.a', 'sub.parab.a')
+    model.connect('sub.dummy.xd', 'sub.parab.x')
+    model.connect('sub.dummy.yd', 'sub.parab.y')
+    # model.connect('sub.parab.f_xy', 'sum.f_xy', src_indices=om.slicer[:])
+    model.connect('sub.parab.f_xy', 'sub.cons.x', src_indices=om.slicer[:])
+
+    model.add_design_var('p.x', lower=-50.0, upper=50.0)
+    model.add_design_var('p.y', lower=-50.0, upper=50.0)
+    model.add_constraint('sub.cons.c', lower=0.0)
+    # model.add_objective('sum.f_sum', index=-1)
+
+    sub.approx_totals(method='fd')
+
+    return prob
+
+
+def _setup_ivc_subivcdistparabconssum_in_sub():
+    # distrib comp is inside of fd group but not a response, and 2 nondistrib
+    # constraints connect to it downstream, both inside of the fd group.
+    size = 7
+
+    prob = om.Problem()
+    model = prob.model
+
+    ivc = om.IndepVarComp()
+    ivc.add_output('x', np.ones((size, )))
+    ivc.add_output('y', np.ones((size, )))
+
+    model.add_subsystem('p', ivc)
+    sub = model.add_subsystem('sub', om.Group())
+
+    sub.add_subsystem('p2', om.IndepVarComp('a', -3.0 + 0.6 * np.arange(size)))
+    sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                            x=np.ones(size), xd=np.ones(size),
+                                            y=np.ones(size), yd=np.ones(size)))
+
+    sub.add_subsystem("parab", DistParab(arr_size=size))
+    sub.add_subsystem("cons", om.ExecComp("c = x*3. + 7.", x=np.ones(size), c=np.ones(size)))
+    sub.add_subsystem('sum', om.ExecComp('f_sum = sum(f_xy)', f_sum=np.ones((size, )), f_xy=np.ones((size, ))))
+
+    model.connect('p.x', 'sub.dummy.x')
+    model.connect('p.y', 'sub.dummy.y')
+    model.connect('sub.p2.a', 'sub.parab.a')
+    model.connect('sub.dummy.xd', 'sub.parab.x')
+    model.connect('sub.dummy.yd', 'sub.parab.y')
+    model.connect('sub.parab.f_xy', 'sub.sum.f_xy', src_indices=om.slicer[:])
+    model.connect('sub.parab.f_xy', 'sub.cons.x', src_indices=om.slicer[:])
+
+    model.add_design_var('p.x', lower=-50.0, upper=50.0)
+    model.add_design_var('p.y', lower=-50.0, upper=50.0)
+    model.add_constraint('sub.cons.c', lower=0.0)
+    model.add_objective('sub.sum.f_sum', index=-1)
+
+    sub.approx_totals(method='fd')
+
+    return prob
+
+
 def _test_func_name(func, num, param):
     args = []
     for p in param.args:
         try:
             arg = p.__name__
-        except:
+        except Exception:
             arg = str(p)
         args.append(arg)
     return func.__name__ + '_' + '_'.join(args)
 
 
 @unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+@use_tempdirs
 class MPITests2(unittest.TestCase):
 
     N_PROCS = 2
@@ -239,18 +332,40 @@ class MPITests2(unittest.TestCase):
         assert_near_equal(prob['total.y'], final)
 
     def test_two_simple(self):
+
+        class DistribComp(om.ExplicitComponent):
+            def __init__(self, arr_size=11, **kwargs):
+                super().__init__(**kwargs)
+                self.arr_size = arr_size
+                self.options['distributed'] = True
+
+            def setup(self):
+                comm = self.comm
+                rank = comm.rank
+
+                sizes, _ = evenly_distrib_idxs(comm.size, self.arr_size)
+
+                self.add_input('x', np.ones(sizes[rank]))
+                self.add_output('y', np.ones(sizes[rank]))
+
+                self.declare_partials(of='y', wrt='x', method='cs')
+
+            def compute(self, inputs, outputs):
+                if self.comm.rank == 0:
+                    outputs['y'] = 2.0 * inputs['x']
+                else:
+                    outputs['y'] = 3.0 * inputs['x']
+
         size = 3
         group = om.Group()
 
         group.add_subsystem('P', om.IndepVarComp('x', np.arange(size)),
                             promotes_outputs=['x'])
-        group.add_subsystem('C1', DistribExecComp(['y=2.0*x', 'y=3.0*x'], arr_size=size,
-                                                  x=np.zeros(size),
-                                                  y=np.zeros(size)),
+        group.add_subsystem('C1', DistribComp(arr_size=size),
                             promotes_inputs=['x'])
         group.add_subsystem('C2', om.ExecComp(['z=3.0*y'],
-                                           y=np.zeros(size),
-                                           z=np.zeros(size)))
+                                              y=np.zeros(size),
+                                              z=np.zeros(size)))
 
         prob = om.Problem()
         prob.model = group
@@ -273,27 +388,49 @@ class MPITests2(unittest.TestCase):
     @parameterized.expand(itertools.product([om.NonlinearRunOnce, om.NonlinearBlockGS]),
                           name_func=_test_func_name)
     def test_fan_out_grouped(self, nlsolver):
+
+        class DistribComp(om.ExplicitComponent):
+            def __init__(self, arr_size=11, **kwargs):
+                super().__init__(**kwargs)
+                self.arr_size = arr_size
+                self.options['distributed'] = True
+
+            def setup(self):
+                comm = self.comm
+                rank = comm.rank
+
+                sizes, _ = evenly_distrib_idxs(comm.size, self.arr_size)
+
+                self.add_input('x', np.ones(sizes[rank]))
+                self.add_output('y', np.ones(sizes[rank]))
+
+                self.declare_partials(of='y', wrt='x', method='cs')
+
+            def compute(self, inputs, outputs):
+                if self.comm.rank > 0:
+                    outputs['y'] = 2.0 * inputs['x']
+                else:
+                    outputs['y'] = 3.0 * inputs['x']
+
         size = 3
         prob = om.Problem()
         prob.model = root = om.Group()
         root.add_subsystem('P', om.IndepVarComp('x', np.ones(size, dtype=float)))
-        root.add_subsystem('C1', DistribExecComp(['y=3.0*x', 'y=2.0*x'], arr_size=size,
-                                                 x=np.zeros(size, dtype=float),
-                                                 y=np.zeros(size, dtype=float)))
+        root.add_subsystem('C1', DistribComp(arr_size=size))
         sub = root.add_subsystem('sub', om.ParallelGroup())
         sub.add_subsystem('C2', om.ExecComp('y=1.5*x',
-                                         x=np.zeros(size),
-                                         y=np.zeros(size)))
+                                            x=np.zeros(size),
+                                            y=np.zeros(size)))
         sub.add_subsystem('C3', om.ExecComp(['y=5.0*x'],
-                                         x=np.zeros(size, dtype=float),
-                                         y=np.zeros(size, dtype=float)))
+                                            x=np.zeros(size, dtype=float),
+                                            y=np.zeros(size, dtype=float)))
 
         root.add_subsystem('C2', om.ExecComp(['y=x'],
-                                          x=np.zeros(size, dtype=float),
-                                          y=np.zeros(size, dtype=float)))
+                                             x=np.zeros(size, dtype=float),
+                                             y=np.zeros(size, dtype=float)))
         root.add_subsystem('C3', om.ExecComp(['y=x'],
-                                          x=np.zeros(size, dtype=float),
-                                          y=np.zeros(size, dtype=float)))
+                                             x=np.zeros(size, dtype=float),
+                                             y=np.zeros(size, dtype=float)))
         root.connect('sub.C2.y', 'C2.x')
         root.connect('sub.C3.y', 'C3.x')
 
@@ -329,6 +466,31 @@ class MPITests2(unittest.TestCase):
     @parameterized.expand(itertools.product([om.NonlinearRunOnce, om.NonlinearBlockGS]),
                           name_func=_test_func_name)
     def test_fan_in_grouped(self, nlsolver):
+
+        class DistribComp(om.ExplicitComponent):
+            def __init__(self, arr_size=11, **kwargs):
+                super().__init__(**kwargs)
+                self.arr_size = arr_size
+                self.options['distributed'] = True
+
+            def setup(self):
+                comm = self.comm
+                rank = comm.rank
+
+                sizes, _ = evenly_distrib_idxs(comm.size, self.arr_size)
+
+                self.add_input('x1', np.ones(sizes[rank]))
+                self.add_input('x2', np.ones(sizes[rank]))
+                self.add_output('y', np.ones(sizes[rank]))
+
+                self.declare_partials(of='y', wrt='x*', method='cs')
+
+            def compute(self, inputs, outputs):
+                if self.comm.rank == 0:
+                    outputs['y'] = 3.0 * inputs['x1'] + 7.0 * inputs['x2']
+                else:
+                    outputs['y'] = 1.5 * inputs['x1'] + 3.5 * inputs['x2']
+
         size = 3
 
         prob = om.Problem()
@@ -336,22 +498,19 @@ class MPITests2(unittest.TestCase):
 
         root.add_subsystem('P1', om.IndepVarComp('x', np.ones(size, dtype=float)))
         root.add_subsystem('P2', om.IndepVarComp('x', np.ones(size, dtype=float)))
-        sub = root.add_subsystem('sub', om.ParallelGroup())
 
+        sub = root.add_subsystem('sub', om.ParallelGroup())
         sub.add_subsystem('C1', om.ExecComp(['y=-2.0*x'],
-                                         x=np.zeros(size, dtype=float),
-                                         y=np.zeros(size, dtype=float)))
+                                            x=np.zeros(size, dtype=float),
+                                            y=np.zeros(size, dtype=float)))
         sub.add_subsystem('C2', om.ExecComp(['y=5.0*x'],
-                                         x=np.zeros(size, dtype=float),
-                                         y=np.zeros(size, dtype=float)))
-        root.add_subsystem('C3', DistribExecComp(['y=3.0*x1+7.0*x2', 'y=1.5*x1+3.5*x2'],
-                                                 arr_size=size,
-                                                 x1=np.zeros(size, dtype=float),
-                                                 x2=np.zeros(size, dtype=float),
-                                                 y=np.zeros(size, dtype=float)))
+                                            x=np.zeros(size, dtype=float),
+                                            y=np.zeros(size, dtype=float)))
+
+        root.add_subsystem('C3', DistribComp(arr_size=size))
         root.add_subsystem('C4', om.ExecComp(['y=x'],
-                                          x=np.zeros(size, dtype=float),
-                                          y=np.zeros(size, dtype=float)))
+                                             x=np.zeros(size, dtype=float),
+                                             y=np.zeros(size, dtype=float)))
 
         root.connect("sub.C1.y", "C3.x1")
         root.connect("sub.C2.y", "C3.x2")
@@ -450,22 +609,22 @@ class MPITests2(unittest.TestCase):
         desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
                           np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
                           1e-6)
 
         J = prob.check_totals(method='fd', out_stream=None)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'x']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'y']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'x']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'y']['abs error'].forward, 0.0, 1e-5)
 
         J = prob.check_totals(method='cs', out_stream=None)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].forward, 0.0, 1e-14)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].forward, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].forward, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'x']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'y']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'x']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'y']['abs error'].forward, 0.0, 1e-14)
 
         # rev mode
 
@@ -476,22 +635,22 @@ class MPITests2(unittest.TestCase):
         desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
                           np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
                           1e-6)
 
         J = prob.check_totals(method='fd', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'x']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'y']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'x']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'y']['abs error'].reverse, 0.0, 1e-5)
 
         J = prob.check_totals(method='cs', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].reverse, 0.0, 1e-14)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].reverse, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].reverse, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'x']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'y']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'x']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'y']['abs error'].reverse, 0.0, 1e-14)
 
     def test_distrib_voi_sparse(self):
         size = 7
@@ -525,22 +684,22 @@ class MPITests2(unittest.TestCase):
         desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
                           np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
                           1e-6)
 
         J = prob.check_totals(method='fd', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'x']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'y']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'x']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'y']['abs error'].forward, 0.0, 1e-5)
 
         J = prob.check_totals(method='cs', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].forward, 0.0, 1e-14)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].forward, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].forward, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'x']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'y']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'x']['abs error'].forward, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'y']['abs error'].forward, 0.0, 1e-14)
 
         # rev mode
 
@@ -551,22 +710,22 @@ class MPITests2(unittest.TestCase):
         desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
                           np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
                           1e-6)
 
         J = prob.check_totals(method='fd', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'x']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'y']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'x']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'y']['abs error'].reverse, 0.0, 1e-5)
 
         J = prob.check_totals(method='cs', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].reverse, 0.0, 1e-14)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].reverse, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].reverse, 0.0, 1e-14)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'x']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_xy', 'y']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'x']['abs error'].reverse, 0.0, 1e-14)
+        assert_near_equal(J['f_sum', 'y']['abs error'].reverse, 0.0, 1e-14)
 
     def test_distrib_voi_fd(self):
         size = 7
@@ -600,16 +759,16 @@ class MPITests2(unittest.TestCase):
         desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
                           np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
                           1e-6)
 
         J = prob.check_totals(out_stream=None, method='cs')
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'x']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'y']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'x']['abs error'].forward, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'y']['abs error'].forward, 0.0, 1e-5)
 
         # rev mode
 
@@ -620,30 +779,27 @@ class MPITests2(unittest.TestCase):
         desvar = prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
                           np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
                           1e-6)
 
         J = prob.check_totals(method='cs', show_only_incorrect=True)
-        assert_near_equal(J['parab.f_xy', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['parab.f_xy', 'p.y']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sum.f_sum', 'p.y']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'x']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_xy', 'y']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'x']['abs error'].reverse, 0.0, 1e-5)
+        assert_near_equal(J['f_sum', 'y']['abs error'].reverse, 0.0, 1e-5)
 
-    def test_distrib_voi_group_fd(self):
+    def _setup_distrib_voi_group_fd(self, mode, size=7):
         # Only supports groups where the inputs to the distributed component whose inputs are
         # distributed to procs via src_indices don't cross the boundary.
-        size = 7
-
         prob = om.Problem()
         model = prob.model
 
-        ivc = om.IndepVarComp()
+        ivc = model.add_subsystem('p', om.IndepVarComp(), promotes=['*'])
         ivc.add_output('x', np.ones((size, )))
         ivc.add_output('y', np.ones((size, )))
 
-        model.add_subsystem('p', ivc, promotes=['*'])
         sub = model.add_subsystem('sub', om.Group(), promotes=['*'])
 
         ivc2 = om.IndepVarComp()
@@ -673,23 +829,115 @@ class MPITests2(unittest.TestCase):
 
         sub.approx_totals(method='fd')
 
+        prob.setup(mode=mode, force_alloc_complex=True)
+
+        prob.run_model()
+
+        return prob
+
+    def test_distrib_voi_group_fd_fwd(self):
+        size = 7
+        prob = self._setup_distrib_voi_group_fd('fwd', size)
+        desvar = prob.driver.get_design_var_values()
+        con = prob.driver.get_constraint_values()
+
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
+                          np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
+                          1e-6)
+
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), rtol=1e-5)
+
+    def test_distrib_voi_group_fd_rev(self):
+        size = 7
+        prob = self._setup_distrib_voi_group_fd('rev', size)
+        desvar = prob.driver.get_design_var_values()
+        con = prob.driver.get_constraint_values()
+
+        assert_near_equal(desvar['x'], np.ones(size), 1e-6)
+        assert_near_equal(con['f_xy'],
+                          np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
+                          1e-6)
+
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), rtol=1e-5)
+
+    def test_distrib_voi_group_fd2_fwd(self):
+        prob = _setup_ivc_subivc_dist_parab_sum()
+        prob.setup(mode='fwd', force_alloc_complex=True)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None))
+
+    def test_distrib_voi_group_fd2_rev(self):
+        prob = _setup_ivc_subivc_dist_parab_sum()
+        prob.setup(mode='rev', force_alloc_complex=True)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None))
+
+    def test_distrib_voi_group_fd4_fwd(self):
+        prob = _setup_ivc_sub_ivcdistparabcons_nosum()
+        prob.setup(mode='fwd', force_alloc_complex=True)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
+
+    def test_distrib_voi_group_fd4_rev(self):
+        prob = _setup_ivc_sub_ivcdistparabcons_nosum()
+        prob.setup(mode='rev', force_alloc_complex=True)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
+
+    def test_distrib_voi_group_fd5_fwd(self):
+        prob = _setup_ivc_subivcdistparabconssum_in_sub()
+        prob.setup(mode='fwd', force_alloc_complex=True)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
+
+    def test_distrib_voi_group_fd5_rev(self):
+        prob = _setup_ivc_subivcdistparabconssum_in_sub()
+        prob.setup(mode='rev', force_alloc_complex=True)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
+
+    def test_distrib_voi_group_fd_loop(self):
+        # distrib comp is inside of fd group and part of a loop.
+        size = 7
+
+        prob = om.Problem()
+        model = prob.model
+
+        ivc = om.IndepVarComp()
+        ivc.add_output('x', np.ones((size, )))
+
+        model.add_subsystem('p', ivc)
+        sub = model.add_subsystem('sub', om.Group())
+
+        sub.add_subsystem('p2', om.IndepVarComp('a', -3.0 + 0.6 * np.arange(size)))
+        sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                               x=np.ones(size), xd=np.ones(size),
+                                               y=np.ones(size), yd=np.ones(size)))
+
+        sub.add_subsystem("parab", DistParab(arr_size=size))
+        sub.add_subsystem("cons", om.ExecComp("c = x*3. + 7.", x=np.ones(size), c=np.ones(size)))
+        sub.add_subsystem('sum', om.ExecComp('f_sum = sum(f_xy)', f_sum=np.ones((size, )), f_xy=np.ones((size, ))))
+
+        model.connect('p.x', 'sub.dummy.x')
+        model.connect('sub.p2.a', 'sub.parab.a')
+        model.connect('sub.dummy.xd', 'sub.parab.x')
+        model.connect('sub.dummy.yd', 'sub.parab.y')
+        model.connect('sub.parab.f_xy', 'sub.sum.f_xy', src_indices=om.slicer[:])
+        model.connect('sub.parab.f_xy', 'sub.cons.x', src_indices=om.slicer[:])
+        model.connect('sub.cons.c', 'sub.dummy.y')
+
+        model.add_design_var('p.x', lower=-50.0, upper=50.0)
+        model.add_constraint('sub.cons.c', lower=0.0)
+        model.add_objective('sub.sum.f_sum', index=-1)
+
+        sub.approx_totals(method='fd')
+
         prob.setup(mode='fwd', force_alloc_complex=True)
 
         prob.run_model()
 
-        desvar = prob.driver.get_design_var_values()
-        con = prob.driver.get_constraint_values()
-
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['sub.parab.f_xy'],
-                          np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
-                          1e-6)
-
-        J = prob.check_totals(method='fd', show_only_incorrect=True)
-        assert_near_equal(J['sub.parab.f_xy', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sub.parab.f_xy', 'p.y']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sub.sum.f_sum', 'p.x']['abs error'].forward, 0.0, 1e-5)
-        assert_near_equal(J['sub.sum.f_sum', 'p.y']['abs error'].forward, 0.0, 1e-5)
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
 
         # rev mode
 
@@ -697,19 +945,195 @@ class MPITests2(unittest.TestCase):
 
         prob.run_model()
 
-        desvar = prob.driver.get_design_var_values()
-        con = prob.driver.get_constraint_values()
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
 
-        assert_near_equal(desvar['p.x'], np.ones(size), 1e-6)
-        assert_near_equal(con['sub.parab.f_xy'],
-                          np.array([27.0, 24.96, 23.64, 23.04, 23.16, 24.0, 25.56]),
-                          1e-6)
+    def test_distrib_voi_group_nofd(self):
+        # distrib comp output feeds two nondist inputs
+        size = 7
 
-        J = prob.check_totals(method='fd', show_only_incorrect=True)
-        assert_near_equal(J['sub.parab.f_xy', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sub.parab.f_xy', 'p.y']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sub.sum.f_sum', 'p.x']['abs error'].reverse, 0.0, 1e-5)
-        assert_near_equal(J['sub.sum.f_sum', 'p.y']['abs error'].reverse, 0.0, 1e-5)
+        prob = om.Problem()
+        model = prob.model
+
+        ivc = om.IndepVarComp()
+        ivc.add_output('x', np.ones((size, )))
+        ivc.add_output('y', np.ones((size, )))
+
+        model.add_subsystem('p', ivc)
+
+        model.add_subsystem('p2', om.IndepVarComp('a', -3.0 + 0.6 * np.arange(size)))
+        model.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                               x=np.ones(size), xd=np.ones(size),
+                                               y=np.ones(size), yd=np.ones(size)))
+
+        model.add_subsystem("parab", DistParab(arr_size=size))
+        model.add_subsystem("cons", om.ExecComp("c = x*3. + 7.", x=np.ones(size), c=np.ones(size)))
+        model.add_subsystem('sum', om.ExecComp('f_sum = sum(f_xy)', f_sum=np.ones((size, )), f_xy=np.ones((size, ))))
+
+        model.connect('p.x', 'dummy.x')
+        model.connect('p.y', 'dummy.y')
+        model.connect('p2.a', 'parab.a')
+        model.connect('dummy.xd', 'parab.x')
+        model.connect('dummy.yd', 'parab.y')
+        model.connect('parab.f_xy', 'sum.f_xy', src_indices=om.slicer[:])
+        model.connect('parab.f_xy', 'cons.x', src_indices=om.slicer[:])
+
+        model.add_design_var('p.x', lower=-50.0, upper=50.0)
+        model.add_design_var('p.y', lower=-50.0, upper=50.0)
+        model.add_constraint('cons.c', lower=0.0)
+        model.add_objective('sum.f_sum', index=-1)
+
+        prob.setup(mode='fwd', force_alloc_complex=True)
+
+        prob.run_model()
+
+        assert_check_totals(prob.check_totals(method='cs', out_stream=None), atol=3e-6)
+
+        # rev mode
+
+        prob.setup(mode='rev', force_alloc_complex=True)
+
+        prob.run_model()
+
+        assert_check_totals(prob.check_totals(method='cs', out_stream=None), atol=3e-6)
+
+    def test_nondistrib_voi_group_fd2(self):
+        # nondistrib comp is inside of fd group but not a response, and 2 nondistrib
+        # constraints connect to it downstream, both inside of the fd group.
+        size = 7
+
+        prob = om.Problem()
+        model = prob.model
+
+        ivc = om.IndepVarComp()
+        ivc.add_output('x', np.ones((size, )))
+        ivc.add_output('y', np.ones((size, )))
+
+        model.add_subsystem('p', ivc)
+        sub = model.add_subsystem('sub', om.Group())
+
+        sub.add_subsystem('p2', om.IndepVarComp('a', -3.0 + 0.6 * np.arange(size)))
+        sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                               x=np.ones(size), xd=np.ones(size),
+                                               y=np.ones(size), yd=np.ones(size)))
+
+        sub.add_subsystem("parab", om.ExecComp('f_xy = x**2 + 3.*xy - y*y + a', shape=size))
+        sub.add_subsystem("cons", om.ExecComp("c = x*3. + 7.", x=np.ones(size), c=np.ones(size)))
+        sub.add_subsystem('sum', om.ExecComp('f_sum = sum(f_xy)', f_sum=np.ones((size, )), f_xy=np.ones((size, ))))
+
+        model.connect('p.x', 'sub.dummy.x')
+        model.connect('p.y', 'sub.dummy.y')
+        model.connect('sub.p2.a', 'sub.parab.a')
+        model.connect('sub.dummy.xd', 'sub.parab.x')
+        model.connect('sub.dummy.yd', 'sub.parab.y')
+        model.connect('sub.parab.f_xy', 'sub.sum.f_xy', src_indices=om.slicer[:])
+        model.connect('sub.parab.f_xy', 'sub.cons.x', src_indices=om.slicer[:])
+
+        model.add_design_var('p.x', lower=-50.0, upper=50.0)
+        model.add_design_var('p.y', lower=-50.0, upper=50.0)
+        model.add_constraint('sub.cons.c', lower=0.0)
+        model.add_objective('sub.sum.f_sum', index=-1)
+
+        sub.approx_totals(method='fd')
+
+        prob.setup(mode='fwd', force_alloc_complex=True)
+
+        prob.run_model()
+
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
+
+        # rev mode
+
+        prob.setup(mode='rev', force_alloc_complex=True)
+
+        prob.run_model()
+
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=3e-6)
+
+    def test_simple_distrib_voi_group_fd(self):
+        size = 3
+
+        prob = om.Problem()
+        model = prob.model
+
+        ivc = om.IndepVarComp()
+        ivc.add_output('x', np.ones(size))
+        ivc.add_output('y', np.ones(size))
+
+        model.add_subsystem('p', ivc, promotes=['*'])
+        sub = model.add_subsystem('sub', om.Group(), promotes=['*'])
+
+        ivc2 = om.IndepVarComp()
+        ivc2.add_output('a', -3.0 + 0.6 * np.arange(size))
+
+        sub.add_subsystem('p2', ivc2, promotes=['*'])
+
+        sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                               x=np.ones(size), xd=np.ones(size),
+                                               y=np.ones(size), yd=np.ones(size)),
+                          promotes_inputs=['*'])
+
+        sub.add_subsystem("parab", DistParab(arr_size=size), promotes_outputs=['*'], promotes_inputs=['a'])
+
+        sub.connect('dummy.xd', 'parab.x')
+        sub.connect('dummy.yd', 'parab.y')
+
+        model.add_design_var('x', lower=-50.0, upper=50.0)
+        model.add_design_var('y', lower=-50.0, upper=50.0)
+        model.add_constraint('f_xy', lower=0.0)
+
+        sub.approx_totals(method='fd')
+
+        prob.setup(mode='rev', force_alloc_complex=True)
+
+        prob.run_model()
+
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=1e-5)
+
+    def test_nondistrib_voi_group_fd(self):
+        size = 7
+
+        prob = om.Problem()
+        model = prob.model
+
+        ivc = om.IndepVarComp()
+        ivc.add_output('x', np.ones((size, )))
+        ivc.add_output('y', np.ones((size, )))
+
+        model.add_subsystem('p', ivc, promotes=['*'])
+        sub = model.add_subsystem('sub', om.Group(), promotes=['*'])
+
+        ivc2 = om.IndepVarComp()
+        ivc2.add_output('a', -3.0 + 0.6 * np.arange(size))
+
+        sub.add_subsystem('p2', ivc2, promotes=['*'])
+        sub.add_subsystem('dummy', om.ExecComp(['xd = x', "yd = y"],
+                                               x=np.ones(size), xd=np.ones(size),
+                                               y=np.ones(size), yd=np.ones(size)),
+                          promotes_inputs=['*'])
+
+        sub.add_subsystem("parab", om.ExecComp('f_xy = x**2 + 3.*xy - y*y + a', shape=size), promotes_outputs=['*'], promotes_inputs=['a'])
+        model.add_subsystem('sum', om.ExecComp('f_sum = sum(f_xy)',
+                                             f_sum=np.ones((size, )),
+                                             f_xy=np.ones((size, ))),
+                          promotes_outputs=['*'])
+
+        model.promotes('sum', inputs=['f_xy'], src_indices=om.slicer[:])
+
+        sub.connect('dummy.xd', 'parab.x')
+        sub.connect('dummy.yd', 'parab.y')
+
+        model.add_design_var('x', lower=-50.0, upper=50.0)
+        model.add_design_var('y', lower=-50.0, upper=50.0)
+        model.add_constraint('f_xy', lower=0.0)
+        model.add_objective('f_sum', index=-1)
+
+        sub.approx_totals(method='fd')
+
+        prob.setup(mode='rev', force_alloc_complex=True)
+
+        prob.run_model()
+
+        assert_check_totals(prob.check_totals(method='fd', out_stream=None))
 
     def test_distrib_group_fd_unsupported_config(self):
         size = 7
@@ -815,51 +1239,29 @@ class MPITests2(unittest.TestCase):
         model.add_constraint('ndp2.g', lower=0.0)
         model.add_objective('f_sum', index=-1)
 
-        mode_idx = {'fwd': 0, 'rev': 1}
         for mode in ['fwd', 'rev']:
             prob.setup(mode=mode, force_alloc_complex=True)
 
             prob.run_model()
 
-            J = prob.check_totals(method='fd', show_only_incorrect=True)
-            assert_near_equal(J['parab.f_xy', 'p.x']['abs error'][mode_idx[mode]], 0.0, 1e-5)
-            assert_near_equal(J['parab.f_xy', 'p.y']['abs error'][mode_idx[mode]], 0.0, 1e-5)
-            assert_near_equal(J['ndp.g', 'p.x']['abs error'][mode_idx[mode]], 0.0, 2e-5)
-            assert_near_equal(J['ndp.g', 'p.y']['abs error'][mode_idx[mode]], 0.0, 2e-5)
-            assert_near_equal(J['parab2.f_xy', 'p.x2']['abs error'][mode_idx[mode]], 0.0, 1e-5)
-            assert_near_equal(J['parab2.f_xy', 'p.y2']['abs error'][mode_idx[mode]], 0.0, 1e-5)
-            assert_near_equal(J['ndp2.g', 'p.x2']['abs error'][mode_idx[mode]], 0.0, 2e-5)
-            assert_near_equal(J['ndp2.g', 'p.y2']['abs error'][mode_idx[mode]], 0.0, 2e-5)
-            assert_near_equal(J['sum.f_sum', 'p.x']['abs error'][mode_idx[mode]], 0.0, 1e-5)
-            assert_near_equal(J['sum.f_sum', 'p.y']['abs error'][mode_idx[mode]], 0.0, 1e-5)
+            assert_check_totals(prob.check_totals(method='fd', out_stream=None), atol=2e-5, rtol=2e-5)
+            assert_check_totals(prob.check_totals(method='cs', out_stream=None), rtol=1e-13)
 
-            J = prob.check_totals(method='cs', show_only_incorrect=True)
-            assert_near_equal(J['parab.f_xy', 'p.x']['abs error'][mode_idx[mode]], 0.0, 1e-14)
-            assert_near_equal(J['parab.f_xy', 'p.y']['abs error'][mode_idx[mode]], 0.0, 1e-14)
-            assert_near_equal(J['ndp.g', 'p.x']['abs error'][mode_idx[mode]], 0.0, 1e-13)
-            assert_near_equal(J['ndp.g', 'p.y']['abs error'][mode_idx[mode]], 0.0, 1e-13)
-            assert_near_equal(J['parab2.f_xy', 'p.x2']['abs error'][mode_idx[mode]], 0.0, 1e-14)
-            assert_near_equal(J['parab2.f_xy', 'p.y2']['abs error'][mode_idx[mode]], 0.0, 1e-14)
-            assert_near_equal(J['ndp2.g', 'p.x2']['abs error'][mode_idx[mode]], 0.0, 1e-13)
-            assert_near_equal(J['ndp2.g', 'p.y2']['abs error'][mode_idx[mode]], 0.0, 1e-13)
-            assert_near_equal(J['sum.f_sum', 'p.x']['abs error'][mode_idx[mode]], 0.0, 1e-14)
-            assert_near_equal(J['sum.f_sum', 'p.y']['abs error'][mode_idx[mode]], 0.0, 1e-14)
-
-    def run_mixed_distrib2_prob(self, mode):
-        size = 5
-        comm = MPI.COMM_WORLD
-        rank = comm.rank
-        sizes, offsets = evenly_distrib_idxs(comm.size, size)
-
+    def run_mixed_distrib2_prob(self, mode, klass=MixedDistrib2):
         prob = om.Problem()
         model = prob.model
+
+        size = 5
+        comm = prob.comm
+        rank = comm.rank
+        sizes, offsets = evenly_distrib_idxs(comm.size, size)
 
         ivc = om.IndepVarComp()
         ivc.add_output('x_dist', np.zeros(sizes[rank]), distributed=True)
         ivc.add_output('x_nd', np.zeros(size))
 
         model.add_subsystem("indep", ivc)
-        model.add_subsystem("D1", MixedDistrib2())
+        model.add_subsystem("D1", klass())
 
         model.connect('indep.x_dist', 'D1.in_dist')
         model.connect('indep.x_nd', 'D1.in_nd')
@@ -891,6 +1293,12 @@ class MPITests2(unittest.TestCase):
         totals = prob.check_totals(show_only_incorrect=True, method='cs')
         assert_check_totals(totals)
 
+    def test_distrib_simplemixeddistrib2_totals_rev(self):
+        prob = self.run_mixed_distrib2_prob('rev', klass=SimpleMixedDistrib2)
+
+        totals = prob.check_totals(show_only_incorrect=True, method='cs')
+        assert_check_totals(totals)
+
     def test_distrib_mixeddistrib2_partials_rev(self):
         prob = self.run_mixed_distrib2_prob('rev')
 
@@ -912,13 +1320,13 @@ class MPITests2(unittest.TestCase):
     def test_distrib_cascade_rev(self):
         # Tests the derivatives on a complicated model that is the distributed equivalent
         # of a double diamond.
-        size = 5
-        comm = MPI.COMM_WORLD
-        rank = comm.rank
-        sizes, offsets = evenly_distrib_idxs(comm.size, size)
-
         prob = om.Problem()
         model = prob.model
+
+        size = 5
+        comm = prob.comm
+        rank = comm.rank
+        sizes, offsets = evenly_distrib_idxs(comm.size, size)
 
         ivc = om.IndepVarComp()
         ivc.add_output('x_dist', np.zeros(sizes[rank]), distributed=True)
@@ -944,14 +1352,7 @@ class MPITests2(unittest.TestCase):
         model.add_constraint('D4.out_dist', lower=0.0)
         model.add_constraint('D4.out_nd', lower=0.0)
 
-        msg = "'D4' <class MixedDistrib2>: It appears this component mixes " \
-              "distributed/non-distributed inputs and outputs, so it may break starting with " \
-              "OpenMDAO 3.25, where the convention used when passing data between " \
-              "distributed and non-distributed inputs and outputs within a matrix free component " \
-              "will change. See https://github.com/OpenMDAO/POEMs/blob/master/POEM_075.md for " \
-              "details."
-        with assert_warning(OMDeprecationWarning, msg):
-            prob.setup(force_alloc_complex=True, mode='rev')
+        prob.setup(force_alloc_complex=True, mode='rev')
 
         # Set initial values of distributed variable.
         x_dist_init = 3.0 + np.arange(size)[offsets[rank]:offsets[rank] + sizes[rank]]
@@ -1085,6 +1486,7 @@ class DistParab2(om.ExplicitComponent):
 
 
 @unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+@use_tempdirs
 class MPITests3(unittest.TestCase):
 
     N_PROCS = 3
@@ -1139,18 +1541,17 @@ class MPITests3(unittest.TestCase):
         prob.run_model()
 
         con = prob.driver.get_constraint_values()
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(con['f_xy'],
                           np.array([12.48]),
                           1e-6)
 
         totals = prob.check_totals(method='cs', show_only_incorrect=True)
         assert_check_totals(totals, rtol=1e-6)
 
-        of = ['parab.f_xy']
-        J = prob.driver._compute_totals(of=of, wrt=['p.x', 'p.y'], return_format='dict')
-        assert_near_equal(J['parab.f_xy']['p.x'], np.array([[-0. , -0. , -0., 0.6 , -0. , -0. , -0. ]]),
+        J = prob.driver._compute_totals(of=['f_xy'], wrt=['x', 'y'], return_format='dict')
+        assert_near_equal(J['f_xy']['x'], np.array([[-0. , -0. , -0., 0.6 , -0. , -0. , -0. ]]),
                           1e-11)
-        assert_near_equal(J['parab.f_xy']['p.y'], np.array([[-0. , -0. , -0., 8.6, -0. , -0. , -0. ]]),
+        assert_near_equal(J['f_xy']['y'], np.array([[-0. , -0. , -0., 8.6, -0. , -0. , -0. ]]),
                           1e-11)
 
         prob.setup(force_alloc_complex=True, mode='rev')
@@ -1160,11 +1561,10 @@ class MPITests3(unittest.TestCase):
         totals = prob.check_totals(method='cs', show_only_incorrect=True)
         assert_check_totals(totals, rtol=1e-6)
 
-        of = ['parab.f_xy']
-        J = prob.driver._compute_totals(of=of, wrt=['p.x', 'p.y'], return_format='dict')
-        assert_near_equal(J['parab.f_xy']['p.x'], np.array([[-0. , -0. , -0., 0.6 , -0. , -0. , -0. ]]),
+        J = prob.driver._compute_totals(of=['f_xy'], wrt=['x', 'y'], return_format='dict')
+        assert_near_equal(J['f_xy']['x'], np.array([[-0. , -0. , -0., 0.6 , -0. , -0. , -0. ]]),
                           1e-11)
-        assert_near_equal(J['parab.f_xy']['p.y'], np.array([[-0. , -0. , -0., 8.6, -0. , -0. , -0. ]]),
+        assert_near_equal(J['f_xy']['y'], np.array([[-0. , -0. , -0., 8.6, -0. , -0. , -0. ]]),
                           1e-11)
 
     def test_distrib_obj_indices(self):
@@ -1236,19 +1636,19 @@ class MPITests3(unittest.TestCase):
         prob.run_model()
 
         con = prob.driver.get_constraint_values()
-        assert_near_equal(con['parab.f_xy'],
+        assert_near_equal(con['f_xy'],
                           np.array([ 8.88, 31.92]),
                           1e-6)
 
         totals = prob.check_totals(method='cs', show_only_incorrect=True)
         assert_check_totals(totals, rtol=1e-6)
 
-        of = ['parab.f_xy']
-        J = prob.driver._compute_totals(of=of, wrt=['p.x', 'p.y'], return_format='dict')
-        assert_near_equal(J['parab.f_xy']['p.x'], np.array([[-0. , -0. , -0.6, -0. , -0. , -0. , -0. ],
+        of = ['f_xy']
+        J = prob.driver._compute_totals(of=of, wrt=['x', 'y'], return_format='dict')
+        assert_near_equal(J['f_xy']['x'], np.array([[-0. , -0. , -0.6, -0. , -0. , -0. , -0. ],
                                                             [-0. , -0. , -0. , -0. , -0. , -0. ,  4.2]]),
                           1e-11)
-        assert_near_equal(J['parab.f_xy']['p.y'], np.array([[-0. , -0. ,  7.4, -0. , -0. , -0. , -0. ],
+        assert_near_equal(J['f_xy']['y'], np.array([[-0. , -0. ,  7.4, -0. , -0. , -0. , -0. ],
                                                             [-0. , -0. , -0. , -0. , -0. , -0. , 12.2]]),
                           1e-11)
 
@@ -1259,17 +1659,18 @@ class MPITests3(unittest.TestCase):
         totals = prob.check_totals(method='cs', show_only_incorrect=True)
         assert_check_totals(totals, rtol=1e-6)
 
-        of = ['parab.f_xy']
-        J = prob.driver._compute_totals(of=of, wrt=['p.x', 'p.y'], return_format='dict')
-        assert_near_equal(J['parab.f_xy']['p.x'], np.array([[-0. , -0. , -0.6, -0. , -0. , -0. , -0. ],
+        of = ['f_xy']
+        J = prob.driver._compute_totals(of=of, wrt=['x', 'y'], return_format='dict')
+        assert_near_equal(J['f_xy']['x'], np.array([[-0. , -0. , -0.6, -0. , -0. , -0. , -0. ],
                                                             [-0. , -0. , -0. , -0. , -0. , -0. ,  4.2]]),
                           1e-11)
-        assert_near_equal(J['parab.f_xy']['p.y'], np.array([[-0. , -0. ,  7.4, -0. , -0. , -0. , -0. ],
+        assert_near_equal(J['f_xy']['y'], np.array([[-0. , -0. ,  7.4, -0. , -0. , -0. , -0. ],
                                                             [-0. , -0. , -0. , -0. , -0. , -0. , 12.2]]),
                           1e-11)
 
 
 @unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+@use_tempdirs
 class MPITestsBug(unittest.TestCase):
 
     N_PROCS = 2
@@ -1540,6 +1941,7 @@ class MPITestsBug(unittest.TestCase):
 
 
 @unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+@use_tempdirs
 class MPIFeatureTests(unittest.TestCase):
 
     N_PROCS = 2
@@ -1648,6 +2050,7 @@ class MPIFeatureTests(unittest.TestCase):
         assert_near_equal(obj, 11.5015, 1e-6)
 
 @unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+@use_tempdirs
 class ZeroLengthInputsOutputs(unittest.TestCase):
 
     N_PROCS = 4
@@ -1750,7 +2153,7 @@ class DeclarePartialsWithoutRowCol(unittest.TestCase):
         assert_near_equal(prob['execcomp.z'], np.ones((size,))*-38.4450, 1e-9)
 
         data = prob.check_totals(out_stream=None)
-        assert_near_equal(data[('execcomp.z', 'dvs.x')]['abs error'].forward, 0.0, 1e-6)
+        assert_near_equal(data[('execcomp.z', 'x')]['abs error'].forward, 0.0, 1e-6)
 
 
 class TestBugs(unittest.TestCase):
@@ -1772,7 +2175,7 @@ class TestBugs(unittest.TestCase):
                 outputs['func'] += np.sum(inputs['state'])
 
         prob = om.Problem()
-        dvs = prob.model.add_subsystem('dvs',DVS())
+        prob.model.add_subsystem('dvs', DVS())
         prob.model.add_subsystem('solver', SolverComp())
         prob.model.connect('dvs.state','solver.state')
         prob.model.add_design_var('dvs.state', indices=[0,2])
@@ -2012,11 +2415,13 @@ class TestDistribBugs(unittest.TestCase):
     def get_problem(self, comp_class, mode='auto', stacked=False):
         size = 5
 
-        comm = MPI.COMM_WORLD
+        prob = om.Problem()
+
+        comm = prob.comm
         rank = comm.rank
         sizes, offsets = evenly_distrib_idxs(comm.size, size)
 
-        model = om.Group()
+        model = prob.model
 
         ivc = om.IndepVarComp()
         ivc.add_output('x_dist', np.zeros(sizes[rank]), distributed=True)
@@ -2033,7 +2438,6 @@ class TestDistribBugs(unittest.TestCase):
             model.connect('D1.out_dist', 'D2.in_dist')
             model.connect('D1.out_nd', 'D2.in_nd')
 
-        prob = om.Problem(model)
         prob.setup(mode=mode, force_alloc_complex=True)
 
         self.x_dist_init = x_dist_init = (3.0 + np.arange(size)[offsets[rank]:offsets[rank] + sizes[rank]]) * .1
@@ -2053,8 +2457,8 @@ class TestDistribBugs(unittest.TestCase):
             Jname = 'J_fwd' if 'J_fwd' in val else 'J_rev'
             idx = 0 if 'J_fwd' in val else 1
             try:
-                analytic = val[Jname]
-                fd = val['J_fd']
+                val[Jname]  # analytic
+                val['J_fd']  # FD
             except Exception as err:
                 self.fail(f"For key {key}: {err}")
             try:
@@ -2113,7 +2517,7 @@ class TestDistribBugs(unittest.TestCase):
             assert_check_totals(data)
 
         msg = "During total derivative computation, the following partial derivatives resulted in serial inputs that were inconsistent across processes: ['D1.out_dist wrt D1.in_nd']."
-        self.assertEqual(str(cm.exception), msg)
+        self.assertTrue(msg in str(cm.exception))
 
     def test_check_partials_cs_old(self):
         prob = self.get_problem(Distrib_Derivs_Matfree_Old)
@@ -2176,14 +2580,14 @@ class TestDistribBugs(unittest.TestCase):
 
     def test_check_err(self):
         with self.assertRaises(RuntimeError) as cm:
-            prob = self.get_problem(Distrib_DerivsErr)
+            self.get_problem(Distrib_DerivsErr)
 
         msg = "'D1' <class Distrib_DerivsErr>: component has defined partial ('out_nd', 'in_dist') which is a non-distributed output wrt a distributed input. This is only supported using the matrix free API."
         self.assertEqual(str(cm.exception), msg)
 
     def test_fd_check_err(self):
         with self.assertRaises(RuntimeError) as cm:
-            prob = self.get_problem(Distrib_DerivsFD, mode='fwd')
+            self.get_problem(Distrib_DerivsFD, mode='fwd')
 
         msg = "'D1' <class Distrib_DerivsFD>: component has defined partial ('out_nd', 'in_dist') which is a non-distributed output wrt a distributed input. This is only supported using the matrix free API."
         self.assertEqual(str(cm.exception), msg)
@@ -2212,14 +2616,113 @@ class TestDistribBugs(unittest.TestCase):
 
         prob.run_driver()
 
-        desvar = prob.driver.get_design_var_values()
+        prob.driver.get_design_var_values()
         con = prob.driver.get_constraint_values()
 
-        assert_near_equal(con['parab.f_xy'], 24.0)
+        assert_near_equal(con['f_xy'], 24.0)
         assert_near_equal(con['a2'], 24.96)
 
         totals = prob.check_totals(method='cs', out_stream=None)
         self._compare_totals(totals)
+
+    def test_dist_desvar_dist_input(self):
+        class SimpleSum(om.ExplicitComponent):
+            """Simple component to sum distributed vector"""
+
+            def setup(self):
+                # Inputs
+                self.add_input('x', 1.0, shape=[2], distributed=True)
+
+                # Outputs
+                self.add_output('sum', 0.0)
+
+            def compute(self, inputs, outputs):
+                outputs['sum'] = self.comm.allreduce(np.sum(inputs["x"]))
+
+            def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
+                if mode == "fwd":
+                    d_outputs['sum'] += self.comm.allreduce(np.sum(d_inputs["x"]))
+                if mode == "rev":
+                    d_inputs["x"] += d_outputs['sum'] * np.ones(2)
+
+        prob = om.Problem()
+        prob.model.add_subsystem("ivc", om.IndepVarComp("x", 1.0, shape=[2], distributed=True))
+        prob.model.connect("ivc.x", "ParallelSum.x")
+        prob.model.add_subsystem("ParallelSum", SimpleSum())
+
+        prob.setup(mode='rev')
+
+        prob.run_model()
+        assert_check_totals(prob.check_totals("ParallelSum.sum", "ivc.x"))
+
+
+class DummyComp(om.ExplicitComponent):
+    def initialize(self):
+        self.options.declare('a',default=0.)
+        self.options.declare('b',default=0.)
+
+    def setup(self):
+        self.add_input('x')
+        self.add_output('y', 0.)
+
+    def compute(self, inputs, outputs):
+        outputs['y'] = self.options['a']*inputs['x'] + self.options['b']
+
+    def compute_jacvec_product(self, inputs, d_inputs, d_outputs, mode):
+        if mode=='rev':
+            if 'y' in d_outputs:
+                if 'x' in d_inputs:
+                    d_inputs['x'] += self.options['a'] * d_outputs['y']
+        else:
+            if 'y' in d_outputs:
+                if 'x' in d_inputs:
+                    d_outputs['y'] += self.options['a'] * d_inputs['x']
+
+class DummyGroup(om.ParallelGroup):
+    def setup(self):
+        self.add_subsystem('C1',DummyComp(a=1,b=2.))
+        self.add_subsystem('C2',DummyComp(a=3.,b=4.))
+
+
+@unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+class TestLocalSrcIndsParColoring2(unittest.TestCase):
+    N_PROCS = 2
+
+    def check_model(self, mode):
+        # this uses parallel coloring with src_indices indexing into a local array
+        prob = om.Problem()
+        model = prob.model
+        model.add_subsystem('dvs',om.IndepVarComp('x',[1.,2.]), promotes=['*'])
+        model.add_subsystem('par',DummyGroup())
+        model.connect('x','par.C1.x',src_indices=[0])
+        model.connect('x','par.C2.x',src_indices=[1])
+
+        model.add_design_var('x',lower=0.,upper=1.)
+
+        # compute derivatives for made-up y constraints in parallel
+        model.add_constraint('par.C1.y', lower=1.0, parallel_deriv_color='deriv_color')
+        model.add_constraint('par.C2.y', lower=1.0, parallel_deriv_color='deriv_color')
+
+        prob.setup(mode=mode)
+        prob.run_model()
+        assert_check_totals(prob.check_totals(out_stream=None))
+
+    def test_local_src_inds_fwd(self):
+        self.check_model(mode='fwd')
+
+    def test_local_src_inds_rev(self):
+        self.check_model(mode='rev')
+
+
+@unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+class TestLocalSrcIndsParColoring3(TestLocalSrcIndsParColoring2):
+    N_PROCS = 3
+
+
+@unittest.skipUnless(MPI and PETScVector, "MPI and PETSc are required.")
+class TestLocalSrcIndsParColoring4(TestLocalSrcIndsParColoring2):
+    N_PROCS = 4
+
 
 
 if __name__ == "__main__":

@@ -54,6 +54,69 @@ def _truncate(s):
     return s
 
 
+def combine_ranges(ranges):
+    """
+    Combine a list of (start, end) tuples into the smallest possible list of contiguous ranges.
+
+    The ranges are assumed to be non-overlapping and in ascending order.
+
+    Parameters
+    ----------
+    ranges : list
+        List of (start, end) tuples.
+
+    Returns
+    -------
+    list of tuples
+        List of combined ranges.
+    """
+    rnglist = []
+    if not ranges:
+        return rnglist
+
+    cstart, cend = ranges[0]
+    for start, end in ranges[1:]:
+        if start == cend:
+            cend = end
+        else:
+            rnglist.append((cstart, cend))
+            cstart, cend = start, end
+
+    rnglist.append((cstart, cend))
+
+    return rnglist
+
+
+def ranges2indexer(ranges, src_shape=None):
+    """
+    Convert a list of ranges to an indexer.
+
+    Parameters
+    ----------
+    ranges : list
+        List of (start, end) tuples.
+    src_shape : tuple or None
+        The shape of the source array.
+
+    Returns
+    -------
+    Indexer
+        Indexer object.
+    """
+    ranges = combine_ranges(ranges)
+    if len(ranges) == 1:
+        idx = slice(ranges[0][0], ranges[0][1])
+    elif len(ranges) == 0:
+        idx = slice(0, 0)
+    else:
+        idx = np.concatenate([np.arange(start, end) for start, end in ranges])
+
+    if src_shape is None:
+        src_shape = (ranges[-1][1] - ranges[0][0],)
+
+    return indexer(idx, src_shape=src_shape, flat_src=True)
+
+
 class Indexer(object):
     """
     Abstract indexing class.
@@ -271,8 +334,6 @@ class Indexer(object):
                 raise
             self._shaped_inst = None
 
-        self._src_shape = sshape
-
         return self
 
     def to_json(self):
@@ -344,6 +405,24 @@ class ShapedIntIndexer(Indexer):
             String representation.
         """
         return f"{self._idx}"
+
+    def apply_offset(self, offset, flat=True):
+        """
+        Apply an offset to this index.
+
+        Parameters
+        ----------
+        offset : int
+            The offset to apply.
+        flat : bool
+            If True, return a flat index.
+
+        Returns
+        -------
+        int
+            The offset index.
+        """
+        return self._idx + offset
 
     def copy(self):
         """
@@ -519,6 +598,24 @@ class ShapedSliceIndexer(Indexer):
             String representation.
         """
         return f"{self._slice}"
+
+    def apply_offset(self, offset, flat=True):
+        """
+        Apply an offset to this index.
+
+        Parameters
+        ----------
+        offset : int
+            The offset to apply.
+        flat : bool
+            If True, return a flat index.
+
+        Returns
+        -------
+        slice
+            The offset slice.
+        """
+        return slice(self._slice.start + offset, self._slice.stop + offset, self._slice.step)
 
     def copy(self):
         """
@@ -752,6 +849,24 @@ class ShapedArrayIndexer(Indexer):
         """
         return _truncate(f"{self._arr}".replace('\n', ''))
 
+    def apply_offset(self, offset, flat=True):
+        """
+        Apply an offset to this index.
+
+        Parameters
+        ----------
+        offset : int
+            The offset to apply.
+        flat : bool
+            If True, return a flat index.
+
+        Returns
+        -------
+        slice
+            The offset slice.
+        """
+        return self.as_array(flat=flat) + offset
+
     def copy(self):
         """
         Copy this Indexer.
@@ -957,6 +1072,26 @@ class ShapedMultiIndexer(Indexer):
         """
         return str(self._tup)
 
+    def apply_offset(self, offset, flat=True):
+        """
+        Apply an offset to this index.
+
+        Parameters
+        ----------
+        offset : int
+            The offset to apply.
+        flat : bool
+            If True, return a flat index.
+
+        Returns
+        -------
+        ndarray
+            The offset array.
+        """
+        if flat:
+            return self.flat() + offset
+        return self.as_array(flat=False) + offset
+
     def copy(self):
         """
         Copy this Indexer.
@@ -997,7 +1132,7 @@ class ShapedMultiIndexer(Indexer):
             The index array into a flat array.
         """
         if self._src_shape is None:
-            raise ValueError(f"Can't determine extent of array because source shape is not known.")
+            raise ValueError("Can't determine extent of array because source shape is not known.")
 
         idxs = np.arange(shape_to_len(self._src_shape), dtype=np.int32).reshape(self._src_shape)
 
@@ -1108,7 +1243,7 @@ class MultiIndexer(ShapedMultiIndexer):
             self._shaped_inst = ShapedMultiIndexer(tuple(idxer.shaped_instance()()
                                                          for idxer in self._idx_list),
                                                    flat_src=self._flat_src)
-        except Exception as err:
+        except Exception:
             self._shaped_inst = None
         else:
             self._shaped_inst.set_src_shape(self._src_shape)
@@ -1168,6 +1303,24 @@ class EllipsisIndexer(Indexer):
             String representation.
         """
         return f"{self._tup}"
+
+    def apply_offset(self, offset, flat=True):
+        """
+        Apply an offset to this index.
+
+        Parameters
+        ----------
+        offset : int
+            The offset to apply.
+        flat : bool
+            If True, return a flat index.
+
+        Returns
+        -------
+        ndarray
+            The offset array.
+        """
+        return self.as_array(flat=flat) + offset
 
     def copy(self):
         """

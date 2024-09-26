@@ -23,9 +23,9 @@ If you are using OpenMDAO, please [cite][20] us!
 
 ## Documentation
 
-Documentation for the latest version can be found [here][2].
+Documentation for the latest development version can be found [here][2].
 
-Documentation archives for prior versions can be found [here][3].
+Documentation for all released versions can be found [here][3].
 
 ## Important Notice
 
@@ -61,7 +61,8 @@ To install all the optional dependencies:
 This allows you to install **OpenMDAO** from a local copy of the source code.
 
     git clone http://github.com/OpenMDAO/OpenMDAO
-    pip install OpenMDAO
+    cd OpenMDAO
+    pip install .
 
 If you would like to make changes to **OpenMDAO** it is recommended you
 install it in *[editable][16]* mode (i.e., development mode) by adding the `-e`
@@ -74,7 +75,7 @@ generator.  You can install everything needed for development by running:
 
 ## OpenMDAO Versions
 
-**OpenMDAO 3.x.y** represents the current, supported version. It requires Python 3.7
+**OpenMDAO 3.x.y** represents the current, supported version. It requires Python 3.8
 or later and is maintained [here][4]. To upgrade to the latest release, run:
 
     pip install --upgrade openmdao
