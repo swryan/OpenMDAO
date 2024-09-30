@@ -208,6 +208,7 @@ jobs:
         with:
           python-version: ${{ matrix.PY }}
           miniforge-version: latest
+          conda-solver: libmamba
 
       - name: Install OpenMDAO
         run: |
