@@ -207,13 +207,10 @@ jobs:
         uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: ${{ matrix.PY }}
-          channels: conda-forge
+          miniforge-version: latest
 
       - name: Install OpenMDAO
         run: |
-          echo "Make sure we are not using anaconda packages"
-          conda config --remove channels defaults
-
           conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
 
           python -m pip install --upgrade pip
@@ -249,7 +246,6 @@ jobs:
             COMPILERS="cython compilers openmpi-mpicc"
           fi
           conda install $COMPILERS -q -y
-          conda install 'mpi=1.0.*=openmpi'
 
           echo "============================================================="
           echo "Install PETSc"
