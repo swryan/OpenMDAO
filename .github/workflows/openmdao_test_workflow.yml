@@ -249,7 +249,7 @@ jobs:
             COMPILERS="cython compilers openmpi-mpicc"
           fi
           conda install $COMPILERS -q -y
-          conda install'mpi=1.0.*=openmpi'
+          conda install 'mpi=1.0.*=openmpi'
 
           echo "============================================================="
           echo "Install PETSc"
