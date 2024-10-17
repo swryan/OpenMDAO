@@ -1834,6 +1834,7 @@ class Group(System):
         self._auto_ivc_warnings = []
 
         for prom, metalist in self._group_inputs.items():
+            print(f"{prom=} {metalist=}")
             if prom not in prom2abs_in:
                 # this error was already collected in setup_var_data, so just continue here
                 continue
@@ -1912,9 +1913,12 @@ class Group(System):
                 prefix = meta['path'] + '.' if meta['path'] else ''
                 src_shape = None
                 if 'val' in meta:
+                    print(f"{prefix=} {meta['val']=}")
                     abs_in = prom2abs_in[prom][0]
+                    print(f"{abs_in=} ")
                     if abs_in in abs2meta_in:  # it's a continuous variable
                         src_shape = np.asarray(meta['val']).shape
+                    print(f"{prefix=} {meta['val']=} {src_shape=}")
                 elif 'src_shape' in meta:
                     src_shape = meta['src_shape']
 
@@ -1941,7 +1945,16 @@ class Group(System):
                                 abs_in2prom_info[tgt][tree_level] = \
                                     _PromotesInfo(src_shape=src_shape, prom=prom,
                                                   promoted_from=self.pathname)
+                else:  # discrete
+                    print(f"{prefix=} {prom=} DISCRETE  {prom2abs_in[prom]=}")
+                    for tgt in prom2abs_in[prom]:
+                        print(f"{tgt=} {(tgt in abs_in2prom_info)=}")
 
+                from pprint import pprint
+                print("META ==============")
+                pprint(meta)
+                print("FULLMETA ==============")
+                pprint(fullmeta)
                 meta.update(fullmeta)
 
     def _find_vars_to_gather(self):
