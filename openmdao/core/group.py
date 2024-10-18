@@ -1977,7 +1977,7 @@ class Group(System):
                 else:  # discrete?
                     for tgt in prom2abs_in[prom]:
                         if tgt in self._discrete_inputs:
-                            # for discretes we only need to set the input values (no units of indices)
+                            # for discretes we only need to set the input values (no units/indices)
                             self._discrete_inputs[tgt] = meta['val']
 
                 meta.update(fullmeta)
