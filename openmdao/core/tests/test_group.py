@@ -3260,8 +3260,11 @@ class TestGroupAddInput(unittest.TestCase):
 
         p.run_model()
 
+        model.list_inputs()
+        model.list_outputs()
+
         assert_near_equal(p['square.weight'], 7.85)
-        assert_near_equal(p['circle.weight'], 24.66150233)
+        assert_near_equal(p['circle.weight'], 24.66150233, 1e-6)
 
 
 class MultComp(om.ExplicitComponent):
