@@ -1974,10 +1974,11 @@ class Group(System):
                                 abs_in2prom_info[tgt][tree_level] = \
                                     _PromotesInfo(src_shape=src_shape, prom=prom,
                                                   promoted_from=self.pathname)
-                else:  # discrete
-                    # for discretes we only need to set the input values (no units of indices)
+                else:  # discrete?
                     for tgt in prom2abs_in[prom]:
-                        self._discrete_inputs[tgt] = meta['val']
+                        if tgt in self._discrete_inputs:
+                            # for discretes we only need to set the input values (no units of indices)
+                            self._discrete_inputs[tgt] = meta['val']
 
                 meta.update(fullmeta)
 

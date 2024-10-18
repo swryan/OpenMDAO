@@ -3161,46 +3161,6 @@ class TestGroupAddInput(unittest.TestCase):
            "promoted input 'x' with conflicting values for 'val'. Call <group>.set_input_defaults('x', val=?), "
            "where <group> is the model to remove the ambiguity.")
 
-    def test_set_input_defaults_discrete_old(self):
-        # this is hacky but enables creating multiple components
-        # with a different default value for a discrete input
-        class CompWithDiscrete(om.ExplicitComponent):
-            def initialize(self):
-                self.options.declare('oper', values=('+', '-', '/', '*'), default='+')
-
-            def setup(self):
-                self.add_discrete_input('oper', self.options['oper'])
-
-                self.add_input("x", 1.0, units='m')
-                self.add_input("y", 1.0, units='m')
-
-                self.add_output("z", 1.0, units='m**2')
-
-            def compute(self, inputs, outputs, discrete_inputs, discrete_outputs):
-                oper = discrete_inputs['oper']
-                if oper == '+':
-                    outputs['z'] = inputs['x'] + inputs['y']
-                elif oper == '-':
-                    outputs['z'] = inputs['x'] - inputs['y']
-                elif oper == '/':
-                    outputs['z'] = inputs['x'] / inputs['y']
-                elif oper == '*':
-                    outputs['z'] = inputs['x'] * inputs['y']
-
-
-        p = om.Problem()
-        model = p.model
-
-        model.add_subsystem('comp1', CompWithDiscrete(oper='-'), promotes_inputs=['*'])  # 1 - 1 = 0
-        model.add_subsystem('comp2', CompWithDiscrete(oper='/'), promotes_inputs=['*'])  # 1 / 1 = 1
-
-        model.set_input_defaults('oper', val='+')  # 1 + 1 = 2
-        p.setup()
-
-        # both comps should perform the '+' operation, so 'z' should be 2.0 in both cases
-        self.assertEqual(p['comp1.z'], 2.0)
-        self.assertEqual(p['comp2.z'], 2.0)
-
     def test_set_input_defaults_discrete(self):
         import math
         import openmdao.api as om
@@ -3227,7 +3187,6 @@ class TestGroupAddInput(unittest.TestCase):
                 thickness = inputs['thickness']
                 material = discrete_inputs['material']
 
-                print(f"square plate {material=}")
                 outputs['weight'] = length * width * thickness * density[material]
 
         class CirclePlate(om.ExplicitComponent):
@@ -3245,7 +3204,6 @@ class TestGroupAddInput(unittest.TestCase):
                 thickness = inputs['thickness']
                 material = discrete_inputs['material']
 
-                print(f"round plate {material=}")
                 outputs['weight'] =  math.pi * radius**2 * thickness * density[material]
 
 
