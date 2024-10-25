@@ -62,10 +62,10 @@ jobs:
           # test latest versions on ubuntu
           # Exclude pyOptSparse, which requires NumPy<2
           # NumPy>=2.1 is required with Python 3.13
-          - NAME: Ubuntu Latest, NumPy 2 (NopyOptSparse)
+          - NAME: Ubuntu Latest, NumPy 2 (No pyOptSparse)
             OS: ubuntu-latest
             PY: '>=3.13'
-            NUMPY: 2
+            NUMPY: '>=2'
             PETSc: true
 
           # test latest versions on macos
@@ -83,7 +83,7 @@ jobs:
           - NAME: MacOS Latest, NumPy 2 (No pyOptSparse)
             OS: macos-13
             PY: '>=3.13'
-            NUMPY: 2
+            NUMPY: '>=2'
             PETSc: true
 
     runs-on: ${{ matrix.OS }}
