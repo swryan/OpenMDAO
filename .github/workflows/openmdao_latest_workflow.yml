@@ -52,7 +52,7 @@ jobs:
           - NAME: Ubuntu Latest, NumPy<2
             OS: ubuntu-latest
             PY: '3.12'
-            NUMPY: '1'
+            NUMPY: '<2'
             PETSc: true
             PYOPTSPARSE: true
             SNOPT: true
@@ -65,7 +65,7 @@ jobs:
           - NAME: Ubuntu Latest, NumPy 2 (No pyOptSparse)
             OS: ubuntu-latest
             PY: '3.13'
-            NUMPY: '2'
+            NUMPY: '>=2.1'
             PETSc: true
 
           # test latest versions on macos
@@ -73,7 +73,7 @@ jobs:
           - NAME: MacOS Latest, NumPy<2
             OS: macos-13
             PY: '3.12'
-            NUMPY: '1'
+            NUMPY: '<2'
             PETSc: true
             PYOPTSPARSE: true
 
@@ -83,7 +83,7 @@ jobs:
           - NAME: MacOS Latest, NumPy 2 (No pyOptSparse)
             OS: macos-13
             PY: '3.13'
-            NUMPY: '2'
+            NUMPY: '>=2.1'
             PETSc: true
 
     runs-on: ${{ matrix.OS }}
