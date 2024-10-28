@@ -29,7 +29,7 @@ from openmdao.recorders.tests.recorder_test_utils import run_driver
 from openmdao.utils.assert_utils import assert_near_equal, assert_equal_arrays, \
     assert_no_warning
 from openmdao.utils.general_utils import determine_adder_scaler
-from openmdao.utils.testing_utils import use_tempdirs
+from openmdao.utils.testing_utils import use_tempdirs, require_pyoptsparse
 from openmdao.utils.om_warnings import OMDeprecationWarning
 
 # check that pyoptsparse is installed. if it is, try to use SLSQP.
@@ -2822,6 +2822,7 @@ class TestSqliteRecorder(unittest.TestCase):
         else:
             self.assertEqual(con, {})
 
+    @require_pyoptsparse('IPOPT')
     def test_total_coloring_record_case_prefix(self):
 
         SIZE = 10
@@ -2857,7 +2858,7 @@ class TestSqliteRecorder(unittest.TestCase):
         p.model.connect('arctan_yox.g', 'delta_theta_con.even', src_indices=EVEN_IND)
         p.model.connect('arctan_yox.g', 'delta_theta_con.odd', src_indices=ODD_IND)
 
-        p.driver = om.ScipyOptimizeDriver(optimizer='SLSQP')
+        p.driver = om.pyOptSparseDriver(optimizer='IPOPT', print_results=False)
         p.driver.opt_settings['print_level'] = 0
 
         p.driver.add_recorder(om.SqliteRecorder('driver_iterations.sql'))
