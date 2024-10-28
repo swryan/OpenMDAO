@@ -199,6 +199,9 @@ class SparseFuncCompImplicit(ImplicitFuncComp):
         fbody = '\n'.join(flines)
 
         if sys.version_info >= (3,13):
+            # https://docs.python.org/3/whatsnew/3.13.html#pep667-porting-notes-py
+            # Code execution functions that implicitly target locals() (such as exec and eval)
+            # must be passed an explicit namespace to access their results in an optimized scope.
             tmp_locals = dict()
             exec(fbody, locals=tmp_locals)  # nosec trusted input
             f = omf.wrap(tmp_locals['func'])
