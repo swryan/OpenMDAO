@@ -647,12 +647,6 @@ jobs:
           python -m pip install --upgrade pip
 
           echo "============================================================="
-          echo "Install lxml for Windows"
-          echo "============================================================="
-          conda install lxml
-
-
-          echo "============================================================="
           echo "Install mkl 2024.1.0 (test failure with 2024.2.2)"
           echo "============================================================="
           conda install mkl=2024.1.0
@@ -704,7 +698,7 @@ jobs:
           copy .coveragerc $HOME
           cd $HOME
           Set-DisplayResolution -Width 1920 -Height 1080 -Force
-          testflo --pre_announce openmdao --timeout=240 --show_skipped --coverage  --coverpkg openmdao --durations=20
+          testflo -n 2 openmdao --timeout=240 --show_skipped --coverage  --coverpkg openmdao --durations=20
 
       - name: Slack unit test failure
         if: failure() && steps.run_tests.outcome == 'failure'
