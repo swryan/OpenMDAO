@@ -46,14 +46,14 @@ parts:
     - file: theory_manual/mpi
   - file: features/features
     sections:
-    - file: features/core_features/main.md
+    - file: features/core_features/main
     - file: features/building_blocks/building_blocks
-    - file: features/recording/main.md
-    - file: features/model_visualization/main.md
-    - file: features/debugging/debugging.md
+    - file: features/recording/main
+    - file: features/model_visualization/main
+    - file: features/debugging/debugging
     - file: features/warning_control/warnings
     - file: features/units
-    - file: features/experimental/main.md
+    - file: features/experimental/main
   - file: examples/examples
     sections:
     - file: examples/tldr_paraboloid
@@ -69,7 +69,7 @@ parts:
   chapters:
   - file: other_useful_docs/om_command
   - file: other/citing
-  - file: other_useful_docs/building_a_tool/building_a_tool.md
+  - file: other_useful_docs/building_a_tool/building_a_tool
     sections:
     - file: other_useful_docs/building_a_tool/repository_structure
     - file: other_useful_docs/building_a_tool/release_process

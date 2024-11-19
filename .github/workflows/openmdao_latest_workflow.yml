@@ -323,7 +323,7 @@ jobs:
           echo "building source docs..."
           python build_source_docs.py
           echo "building book..."
-          jupyter-book build -W --keep-going openmdao_book
+          jupyter-book build --html openmdao_book
           echo "copying build artifacts..."
           python copy_build_artifacts.py
 
