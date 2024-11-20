@@ -320,12 +320,7 @@ jobs:
           echo "============================================================="
           echo "Building the docs"
           echo "============================================================="
-          echo "building source docs..."
-          python build_source_docs.py
-          echo "building book..."
-          jupyter-book build --html openmdao_book
-          echo "copying build artifacts..."
-          python copy_build_artifacts.py
+          ./build_all_docs.sh
 
       - name: Display doc build reports
         if: steps.build_docs.outcome == 'failure'
