@@ -350,6 +350,7 @@ jobs:
             echo "Install version of openssl compatible with hosting service"
             echo "============================================================="
             conda install -c conda-forge 'openssl=3.0'
+            pip install packaging
 
             echo "============================================================="
             echo "Fetch tags to get docs version"
