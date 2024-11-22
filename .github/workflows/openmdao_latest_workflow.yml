@@ -58,6 +58,7 @@ jobs:
             SNOPT: true
             BANDIT: true
             BUILD_DOCS: true
+            PUBLISH_DOCS: true
 
           # test latest versions on ubuntu
           # Exclude pyOptSparse, which requires NumPy<2
@@ -332,6 +333,31 @@ jobs:
             echo "============================================================="
             cat $f
           done
+
+      - name: Publish docs
+        if: matrix.PUBLISH_DOCS
+        env:
+          DOCS_LOCATION: ${{ secrets.DOCS_LOCATION }}
+        run: |
+          if [[ "${#DOCS_LOCATION}" ]]; then
+            echo "============================================================="
+            echo "Install version of openssl compatible with hosting service"
+            echo "============================================================="
+            conda install -c conda-forge 'openssl=3.0'
+
+            echo "============================================================="
+            echo "Fetch tags to get docs version"
+            echo "============================================================="
+            git fetch --prune --unshallow --tags
+
+            echo "============================================================="
+            echo "Publish docs"
+            echo "============================================================="
+            cd openmdao/docs
+            python upload_doc_version.py openmdao_book/_build/html/ ${{ secrets.DOCS_LOCATION }}
+          else
+            echo "Docs destination not available."
+          fi
 
       - name: Deprecations Report
         id: deprecations_report
