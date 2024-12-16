@@ -221,7 +221,7 @@ jobs:
               echo "SNOPT source is not available"
             fi
           fi
-          build_pyoptsparse $BRANCH $SNOPT
+          build_pyoptsparse -v $BRANCH $SNOPT
 
       - name: Install OpenMDAO
         run: |
