@@ -84,7 +84,7 @@ jobs:
         include:
           # test baseline versions on Ubuntu
           - NAME: Ubuntu Baseline
-            OS: ubuntu-latest
+            OS: ubuntu-22.04
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.14'
@@ -138,14 +138,14 @@ jobs:
 
           # test oldest supported versions
           - NAME: Ubuntu Oldest
-            OS: ubuntu-latest
+            OS: ubuntu-22.04
             PY: '3.9'
-            NUMPY: '1.23'
+            NUMPY: '1.24'
             SCIPY: '1.9'
             OPENMPI: '4.0'
             MPI4PY: '3.0'
             PETSc: '3.13'
-            PYOPTSPARSE: 'v2.9.0'
+            PYOPTSPARSE: 'v2.10.2'
             SNOPT: '7.2'
             OPTIONAL: '[all]'
             TESTS: true
@@ -201,19 +201,17 @@ jobs:
           echo "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup conda
         uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: ${{ matrix.PY }}
+          conda-remove-defaults: true
           channels: conda-forge
 
       - name: Install OpenMDAO
         run: |
-          echo "Make sure we are not using anaconda packages"
-          conda config --remove channels defaults
-
           conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
 
           python -m pip install --upgrade pip
@@ -344,8 +342,8 @@ jobs:
           conda install graphviz
           python -m pip install pyparsing psutil objgraph pyxdsm pydot
 
-          echo "Pre-install playwright dependencies to avoid warning messages"
-          playwright install --with-deps || true
+          echo "Pre-install playwright dependencies to avoid 'Playwright Host validation warning'"
+          playwright install --with-deps
 
       - name: Display environment info
         id: env_info
@@ -632,13 +630,14 @@ jobs:
           script: core.setFailed('The ${{ matrix.NAME }} job was excluded from the run, exiting...');
 
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Setup conda
         uses: conda-incubator/setup-miniconda@v3
         with:
           python-version: ${{ matrix.PY }}
           channels: conda-forge
+          conda-remove-defaults: true
 
       - name: Install OpenDMAO
         run: |
@@ -647,9 +646,9 @@ jobs:
           python -m pip install --upgrade pip
 
           echo "============================================================="
-          echo "Install lxml for Windows (No Python 3.11 version on pypi)"
+          echo "Install mkl 2024.1.0 (test failure with 2024.2.2)"
           echo "============================================================="
-          conda install lxml
+          conda install mkl=2024.1.0
 
           echo "============================================================="
           echo "Install OpenMDAO"
@@ -752,6 +751,7 @@ jobs:
     name: Finish coverage
     needs: [tests, windows_tests]
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
     - uses: coverallsapp/github-action@master
       with:
@@ -769,6 +769,11 @@ jobs:
       with:
         workflow: Dymos Tests
         repo: ${{ github.repository_owner }}/dymos
+        inputs: >
+          {
+            "run_name": "Test Latest OpenMDAO Development Version",
+            "latest": true
+           }
         token: ${{ secrets.ACCESS_TOKEN }}
       if: github.event_name == 'push'
 

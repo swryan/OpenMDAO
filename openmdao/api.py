@@ -34,6 +34,8 @@ from openmdao.components.multifi_meta_model_unstructured_comp \
 from openmdao.components.mux_comp import MuxComp
 from openmdao.components.vector_magnitude_comp import VectorMagnitudeComp
 from openmdao.components.submodel_comp import SubmodelComp
+from openmdao.components.jax_explicit_comp import JaxExplicitComponent
+from openmdao.components.jax_implicit_comp import JaxImplicitComponent
 
 
 # Solvers
@@ -117,7 +119,7 @@ from openmdao.utils.om_warnings import issue_warning, reset_warnings, OpenMDAOWa
     OMInvalidCheckDerivativesOptionsWarning
 
 # Utils
-from openmdao.utils.general_utils import wing_dbg, env_truthy, om_dump
+from openmdao.utils.general_utils import wing_dbg, env_truthy, om_dump, is_undefined
 from openmdao.utils.array_utils import shape_to_len
 from openmdao.utils.jax_utils import register_jax_component
 

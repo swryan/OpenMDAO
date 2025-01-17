@@ -489,6 +489,84 @@ class TestGroup(unittest.TestCase):
         with self.assertRaisesRegex(Exception, msg):
             prob.setup()
 
+    def test_required_connection_input_unconnected(self):
+        class RequiredConnComp(om.ExplicitComponent):
+            def setup(self):
+                self.add_input('x', require_connection=True)
+                self.add_output('y')
+
+            def compute(self, inputs, outputs):
+                outputs['y'] = 2 * inputs['x']
+
+        p = om.Problem()
+        p.model.add_subsystem('comp', RequiredConnComp())
+        p.setup()
+
+        with self.assertRaises(Exception) as cm:
+            p.final_setup()
+
+        self.assertEqual(str(cm.exception),
+                         '<model> <class Group>: Input "comp.x" requires a connection but is not connected.')
+
+    def test_required_connection_promoted_input_unconnected(self):
+        class RequiredConnComp(om.ExplicitComponent):
+            def setup(self):
+                self.add_input('x', require_connection=True)
+                self.add_output('y')
+
+            def compute(self, inputs, outputs):
+                outputs['y'] = 2 * inputs['x']
+
+        p = om.Problem()
+        p.model.add_subsystem('comp', RequiredConnComp(), promotes=['*'])
+        p.setup()
+
+        with self.assertRaises(Exception) as cm:
+            p.final_setup()
+
+        self.assertEqual(str(cm.exception),
+                         '<model> <class Group>: Input "comp.x", promoted as "x", requires a connection but is not connected.')
+
+    def test_required_connection_desvar(self):
+        class RequiredConnComp(om.ExplicitComponent):
+            def setup(self):
+                self.add_input('x', require_connection=True)
+                self.add_output('y')
+
+            def compute(self, inputs, outputs):
+                outputs['y'] = 2 * inputs['x']
+
+        p = om.Problem()
+        p.model.add_subsystem('comp', RequiredConnComp(), promotes=['*'])
+        p.model.add_design_var('x')
+        p.setup()
+        p.run_model()
+
+        # no Exception should be raised due to 'require_connection=True' since x is a desvar
+
+    def test_required_connection_connected_in_configure(self):
+        class RequiredConnComp(om.ExplicitComponent):
+            def setup(self):
+                self.add_input('x', require_connection=True)
+                self.add_output('y')
+
+            def compute(self, inputs, outputs):
+                outputs['y'] = 2 * inputs['x']
+
+        class RequiredConnGroup(om.Group):
+            def setup(self):
+                self.add_subsystem('indep', om.IndepVarComp('x'))
+                self.add_subsystem('comp', RequiredConnComp())
+
+            def configure(self):
+                self.connect('indep.x', 'comp.x')
+
+        p = om.Problem(RequiredConnGroup())
+        p.setup()
+        p.run_model()
+
+        # no Exception should be raised due to 'require_connection=True' since x is connected in configure()
+
     def test_unconnected_input_units_no_mismatch(self):
         p = om.Problem()
 
@@ -3082,6 +3160,109 @@ class TestGroupAddInput(unittest.TestCase):
            "\n   <model> <class Group>: The subsystems G1 and par.G5 called set_input_defaults for "
            "promoted input 'x' with conflicting values for 'val'. Call <group>.set_input_defaults('x', val=?), "
            "where <group> is the model to remove the ambiguity.")
+
+    def test_set_input_defaults_discrete(self):
+        import math
+        import openmdao.api as om
+
+        density = {
+            'steel': 7.85,  # g/cm^3
+            'aluminum': 2.7  # g/cm^3
+        }
+
+        class SquarePlate(om.ExplicitComponent):
+            """
+            Calculate the weight of a square plate.
+
+            material is a discrete input (default: steel)
+            """
+
+            def setup(self):
+                self.add_discrete_input('material', 'steel')
+
+                self.add_input('length', 1.0, units='cm')
+                self.add_input('width', 1.0, units='cm')
+                self.add_input('thickness', 1.0, units='cm')
+
+                self.add_output('weight', 1.0, units='g')
+
+            def compute(self, inputs, outputs, discrete_inputs, discrete_outputs):
+                length = inputs['length']
+                width = inputs['width']
+                thickness = inputs['thickness']
+                material = discrete_inputs['material']
+
+                outputs['weight'] = length * width * thickness * density[material]
+
+        class CirclePlate(om.ExplicitComponent):
+            """
+            Calculate the weight of a circular plate.
+
+            material is a discrete input (default: aluminum)
+            """
+
+            def setup(self):
+                self.add_discrete_input('material', 'aluminum')
+
+                self.add_input('radius', 1.0, units='cm')
+                self.add_input('thickness', 1.0, units='g')
+
+                self.add_output('weight', 1.0, units='g')
+
+            def compute(self, inputs, outputs, discrete_inputs, discrete_output):
+                radius = inputs['radius']
+                thickness = inputs['thickness']
+                material = discrete_inputs['material']
+
+                outputs['weight'] =  math.pi * radius**2 * thickness * density[material]
+
+        #
+        # first check that we get errors when using invalid args to set defaults on a discrete
+        #
+        p = om.Problem()
+        model = p.model
+
+        model.add_subsystem('square', SquarePlate(), promotes_inputs=['material'])
+        model.add_subsystem('circle', CirclePlate(), promotes_inputs=['material'])
+
+        # setting input defaults for units/src_shape is not valid for a discrete and will generate errors
+        model.set_input_defaults('material', 'steel', units='kg', src_shape=(1,))
+        expect_errors = [
+            f"Collected errors for problem '{p._get_inst_id()}':",
+            "   <model> <class Group>: Cannot set 'units=kg' for discrete variable 'circle.material'.",
+            "   <model> <class Group>: Cannot set 'src_shape=(1,)' for discrete variable 'circle.material'.",
+            "   <model> <class Group>: Cannot set 'units=kg' for discrete variable 'square.material'.",
+            "   <model> <class Group>: Cannot set 'src_shape=(1,)' for discrete variable 'square.material'.",
+        ]
+
+        with self.assertRaises(Exception) as cm:
+            p.setup()
+
+        err_msgs = cm.exception.args[0].split('\n')
+        for err_msg in expect_errors:
+            self.assertTrue(err_msg in err_msgs,
+                            err_msg + ' not found in:\n' + cm.exception.args[0])
+
+        #
+        # now make sure that setting just the default value for a discrete works as expected
+        #
+        p = om.Problem()
+        model = p.model
+
+        model.add_subsystem('square', SquarePlate(), promotes_inputs=['material'])
+        model.add_subsystem('circle', CirclePlate(), promotes_inputs=['material'])
+
+        model.set_input_defaults('material', 'steel')
+
+        p.setup()
+        p.run_model()
+
+        inputs = model.list_inputs(return_format='dict', out_stream=None)
+        self.assertEqual(inputs['square.material']['val'], 'steel')
+        self.assertEqual(inputs['circle.material']['val'], 'steel')
+
+        assert_near_equal(p['square.weight'], 7.85)
+        assert_near_equal(p['circle.weight'], 24.66150233, 1e-6)
 
 
 class MultComp(om.ExplicitComponent):
