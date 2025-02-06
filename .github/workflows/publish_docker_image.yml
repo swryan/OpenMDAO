@@ -40,7 +40,7 @@ jobs:
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
         with:
           images: |
-            images: ${{ github.repository_owner }}/openmdao
+            images: swryan/openmdao
             ghcr.io/${{ github.repository }}
 
       - name: Build and push Docker images
