@@ -264,6 +264,10 @@ class Problem(object, metaclass=ProblemMetaclass):
 
         # General options
         self.options = OptionsDictionary(parent_name=type(self).__name__)
+        self.options.declare('working_dir', types=str,
+                             default=get_work_dir(),
+                             desc='Top-level directory for OpenMDAO outputs. '
+                                  'Defaults to current working directory if not set.')
         self.options.declare('coloring_dir', types=str,
                              default=os.path.join(get_work_dir(), 'coloring_files'),
                              desc='Directory containing coloring files (if any) for this Problem.')
@@ -962,6 +966,7 @@ class Problem(object, metaclass=ProblemMetaclass):
             'name': self._name,  # the name of this Problem
             'pathname': None,  # the pathname of this Problem in the current tree of Problems
             'comm': comm,
+            'working_dir': self.options['working_dir'],  # working directory for this Problem
             'coloring_dir': _DEFAULT_COLORING_DIR,  # directory for input coloring files
             'recording_iter': _RecIteration(comm.rank),  # manager of recorder iterations
             'local_vector_class': local_vector_class,

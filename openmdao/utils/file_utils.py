@@ -494,7 +494,7 @@ def _get_outputs_dir(obj, *subdirs, mkdir=True):
 
     prob_pathname = prob_meta['pathname']
 
-    work_dir = pathlib.Path(get_work_dir())
+    work_dir = pathlib.Path(prob_meta.get('working_dir', get_work_dir()))
     if mkdir and not work_dir.exists():
         work_dir.mkdir(exist_ok=True)
 

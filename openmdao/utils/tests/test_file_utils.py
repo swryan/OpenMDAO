@@ -318,3 +318,28 @@ class TestCleanOutputs(unittest.TestCase):
                 self.assertIn(expected_str, ss.getvalue())
         finally:
             shutil.rmtree('baz_out')
+
+    def test_problem_working_dir_option(self):
+
+        my_working_dir = pathlib.Path(os.getcwd(), 'custom_dir')
+
+        p1 = om.Problem(name='foo', working_dir=str(my_working_dir))
+        p1.model.add_subsystem('exec', om.ExecComp('y = a + b'))
+        p1.setup()
+        p1.add_recorder(om.SqliteRecorder('cases.sql'))
+        p1.run_model()
+
+        # Test that p1 working_dir option was respected.
+        ss = io.StringIO()
+        with redirect_stdout(ss):
+            om.clean_outputs('.', pattern='*', dryrun=True, recurse=True)
+
+        print(ss.getvalue())
+        expected = ('Found 1 OpenMDAO output directories:',
+                    f'Would remove custom_dir{os.sep}foo_out (dryrun = True).',
+                    'Removed 0 OpenMDAO output directories.')
+        try:
+            for expected_str in expected:
+                self.assertIn(expected_str, ss.getvalue())
+        finally:
+            shutil.rmtree(my_working_dir)
