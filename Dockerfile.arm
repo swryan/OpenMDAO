@@ -5,7 +5,7 @@ FROM arm64v8/ubuntu:noble
 SHELL ["/bin/bash", "-c"]
 
 # Install updates
-RUN apt-get update -y && apt-get -y install sudo vim curl wget git g++ gfortran make cmake graphviz libblas-dev liblapack-dev
+RUN apt-get update -y && apt-get -y install sudo vim curl wget git g++ gfortran make cmake graphviz libopenblas-dev liblapack-dev
 
 # install a browser
 RUN apt-get update -y && apt-get install firefox --fix-missing -y
@@ -34,8 +34,8 @@ RUN source $HOME/miniforge3/etc/profile.d/conda.sh ;\
     #
     conda create -n mdaowork python=3.12 'numpy<2' scipy cython swig -y ;\
     conda activate mdaowork ;\
-    conda install matplotlib graphviz -y ;\
-    conda install mpi4py openmpi petsc4py=3.20 -y ;\
+    conda install matplotlib graphviz -q -y ;\
+    conda install mpi4py openmpi petsc4py=3.20 -q -y ;\
     python -m pip install pyparsing psutil objgraph plotly pyxdsm pydot ;\
     #
     # Install pyoptsparse

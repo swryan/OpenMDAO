@@ -32,10 +32,10 @@ RUN source $HOME/miniforge3/etc/profile.d/conda.sh ;\
     #
     # Create conda environment
     #
-    conda create -n mdaowork python=3.12 'numpy<2' scipy cython swig -y ;\
+    conda create -n mdaowork python=3.12 'numpy<2' scipy cython swig -q -y ;\
     conda activate mdaowork ;\
-    conda install matplotlib graphviz -y ;\
-    conda install mpi4py openmpi petsc4py=3.20 -y ;\
+    conda install matplotlib graphviz -q -y ;\
+    conda install mpi4py openmpi petsc4py=3.20 -q -y ;\
     python -m pip install pyparsing psutil objgraph plotly pyxdsm pydot ;\
     #
     # Install pyoptsparse
