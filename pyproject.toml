@@ -62,7 +62,7 @@ jax = [
 ],
 numba = [
     "numba",
-]
+],
 notebooks = [
     "ipympl",
     "notebook",
