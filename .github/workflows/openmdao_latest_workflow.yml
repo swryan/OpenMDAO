@@ -51,6 +51,7 @@ jobs:
             PY: 3
             NUMPY: 2
             PETSc: true
+            PYOPTSPARSE: true
 
           # test latest versions on macos
           - NAME: MacOS Latest
@@ -58,6 +59,7 @@ jobs:
             PY: 3
             NUMPY: 2
             PETSc: true
+            PYOPTSPARSE: true
 
     runs-on: ${{ matrix.OS }}
 
@@ -137,9 +139,18 @@ jobs:
           echo "============================================================="
           echo "Check MPI and PETSc installation"
           echo "============================================================="
-          export OMPI_MCA_rmaps_base_oversubscribe=1
+
+          # * OpenMPI 5.0 changed the name and the value of the environment variable to
+          #   allow oversubscription from
+          #      export OMPI_MCA_rmaps_base_oversubscribe=1
+          #   to
+          #      export PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe
+          # https://launchpad.net/ubuntu/+source/petsc4py/3.22.1-2ubuntu1
+
+          export PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe
           export OMPI_MCA_btl=^openib
 
+          echo "PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe" >> $GITHUB_ENV
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
           echo "OMPI_MCA_btl=^openib" >> $GITHUB_ENV
 

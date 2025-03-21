@@ -282,6 +282,7 @@ jobs:
                                  print(x.getArray())"
           echo "-----------------------"
 
+          echo "PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe" >> $GITHUB_ENV
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
           echo "OMPI_MCA_btl=^openib" >> $GITHUB_ENV
 
@@ -302,7 +303,7 @@ jobs:
 
             conda install -c conda-forge pyoptsparse
           else
-            conda install swig lapack -q -y
+            conda install swig liblapack -q -y
 
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
