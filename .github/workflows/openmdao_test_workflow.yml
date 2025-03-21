@@ -88,7 +88,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.20'
+            PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
@@ -104,7 +104,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.20'
+            PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
@@ -118,7 +118,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.20'
+            PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
@@ -510,15 +510,6 @@ jobs:
           echo "============================================================="
           cd $GITHUB_WORKSPACE
           python -m bandit -c bandit.yml -ll -r openmdao
-
-      - name: Check NumPy 2.0 Compatibility
-        run: |
-          echo "============================================================="
-          echo "Check OpenMDAO code for NumPy 2.0 compatibility"
-          echo "See: https://numpy.org/devdocs/numpy_2_0_migration_guide.html"
-          echo "============================================================="
-          python -m pip install ruff
-          ruff check . --select NPY201
 
       - name: Perform linting with Ruff
         if: ${{ matrix.NAME == 'Ubuntu Baseline' }}
