@@ -230,11 +230,6 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
-      - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-13'
-        run: |
-          conda install swig
-
       - name: Install PETSc
         if: matrix.PETSc
         run: |
@@ -307,6 +302,8 @@ jobs:
 
             conda install -c conda-forge pyoptsparse
           else
+            conda install swig lapack -q -y
+
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
             if [[ "${{ matrix.PYOPTSPARSE }}" == "latest" ]]; then
