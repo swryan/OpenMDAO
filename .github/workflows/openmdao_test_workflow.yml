@@ -84,12 +84,12 @@ jobs:
         include:
           # test baseline versions on Ubuntu
           - NAME: Ubuntu Baseline
-            OS: ubuntu-22.04
-            PY: '3.12'
-            NUMPY: '1.26'
-            SCIPY: '1.14'
+            OS: ubuntu-24.04
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
             PETSc: '3.20'
-            PYOPTSPARSE: 'v2.11.0'
+            PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
@@ -101,11 +101,11 @@ jobs:
           # test baseline versions on MacOS
           - NAME: MacOS Baseline
             OS: macos-13
-            PY: '3.12'
-            NUMPY: '1.26'
-            SCIPY: '1.13'
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
             PETSc: '3.20'
-            PYOPTSPARSE: 'v2.11.0'
+            PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
@@ -115,13 +115,13 @@ jobs:
           # test baseline versions on MacOS/ARM
           - NAME: MacOS ARM
             OS: macos-14
-            PY: '3.12'
-            NUMPY: '1.26'
-            SCIPY: '1.14'
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
             PETSc: '3.20'
-            # PYOPTSPARSE: 'v2.11.0'
+            PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
-            # SNOPT: '7.7'
+            SNOPT: '7.7'
             OPTIONAL: '[all]'
             TESTS: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
@@ -154,11 +154,11 @@ jobs:
           # build docs (baseline versions)
           - NAME: Build Docs
             OS: ubuntu-latest
-            PY: '3.11'
-            NUMPY: '1.26'
-            SCIPY: '1.13'
-            PETSc: '3.19'
-            PYOPTSPARSE: 'v2.11.0'
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PETSc: '3.20'
+            PYOPTSPARSE: 'v2.13.0'
             SNOPT: '7.7'
             OPTIONAL: '[all]'
             BUILD_DOCS: true
