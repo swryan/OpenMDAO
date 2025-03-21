@@ -157,7 +157,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.20'
+            PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'
             SNOPT: '7.7'
             OPTIONAL: '[all]'
@@ -265,6 +265,15 @@ jobs:
           echo "============================================================="
           echo "Check MPI and PETSc installation"
           echo "============================================================="
+
+          # * OpenMPI 5.0 changed the name and the value of the environment variable to
+          #   allow oversubscription from
+          #      export OMPI_MCA_rmaps_base_oversubscribe=1
+          #   to
+          #      export PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe
+          # https://launchpad.net/ubuntu/+source/petsc4py/3.22.1-2ubuntu1
+
+          export PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe
           export OMPI_MCA_rmaps_base_oversubscribe=1
           export OMPI_MCA_btl=^openib
           echo "-----------------------"
