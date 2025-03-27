@@ -86,7 +86,7 @@ jobs:
           - NAME: Ubuntu Baseline
             OS: ubuntu-24.04
             PY: '3.13'
-            NUMPY: '2.2'
+            NUMPY: '2.1'
             SCIPY: '1.15'
             PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'
@@ -102,7 +102,7 @@ jobs:
           - NAME: MacOS Baseline
             OS: macos-13
             PY: '3.13'
-            NUMPY: '2.2'
+            NUMPY: '2.1'
             SCIPY: '1.15'
             PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'
@@ -116,7 +116,7 @@ jobs:
           - NAME: MacOS ARM
             OS: macos-14
             PY: '3.13'
-            NUMPY: '2.2'
+            NUMPY: '2.1'
             SCIPY: '1.15'
             PETSc: '3.22'
             PYOPTSPARSE: 'v2.13.0'

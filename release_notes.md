@@ -1489,7 +1489,7 @@ for more information.
 
 We've also added some security to the OpenMDAO repository by requiring GPG-signed commits when accepting pull requests.
 This is an extra layer of security that helps prevent nefarious pull-requests from being made to the code-base.
-See the documentation [here](http://openmdao.org/twodocs/versions/latest/other_useful_docs/developer_docs/signing_commits.html) for more information.
+See the documentation [here](http://openmdao.org/newdocs/versions/latest/other_useful_docs/developer_docs/signing_commits.html) for more information.
 
 ## New Deprecations
 
