@@ -51,6 +51,7 @@ jobs:
             PY: 3
             NUMPY: 2
             PETSc: true
+            PYOPTSPARSE: true
 
           # test latest versions on macos
           - NAME: MacOS Latest
@@ -58,6 +59,7 @@ jobs:
             PY: 3
             NUMPY: 2
             PETSc: true
+            PYOPTSPARSE: true
 
     runs-on: ${{ matrix.OS }}
 
@@ -132,7 +134,7 @@ jobs:
           echo "============================================================="
           echo "Install latest PETSc"
           echo "============================================================="
-          conda install mpich mpi4py petsc4py=3.22.2 -q -y
+          conda install mpich mpi4py petsc4py=3 compilers liblapack libopenblas swig -q -y
 
           echo "============================================================="
           echo "Check MPI and PETSc installation"
@@ -192,7 +194,7 @@ jobs:
               echo "SNOPT source is not available"
             fi
           fi
-          build_pyoptsparse $BRANCH $SNOPT
+          build_pyoptsparse -v $BRANCH $SNOPT
 
       - name: Install OpenMDAO
         run: |
