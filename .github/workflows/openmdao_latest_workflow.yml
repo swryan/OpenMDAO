@@ -183,7 +183,7 @@ jobs:
           echo "Install latest pyoptsparse"
           echo "============================================================="
           # make sure lapack and compilers are compatible
-          conda install gfortran liblapack swig
+          conda install gfortran liblapack libopenblas swig
 
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
