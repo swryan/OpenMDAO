@@ -110,9 +110,9 @@ jobs:
           channels: conda-forge
 
       - name: Install MacOS-specific dependencies
-        if: matrix.OS == 'macos-13'
+        if: matrix.OS == 'macos-latest'
         run: |
-          conda install compilers swig
+          brew install lapack openblas swig
 
       - name: Install NumPy/SciPy
         run: |
@@ -134,7 +134,8 @@ jobs:
           echo "============================================================="
           echo "Install latest PETSc"
           echo "============================================================="
-          conda install mpich mpi4py petsc4py=3 compilers liblapack libopenblas swig -q -y
+          # install all these together to avoid incompatibilities
+          conda install mpich mpi4py petsc4py=3 compilers liblapack libopenblas swig -v -y
 
           echo "============================================================="
           echo "Check MPI and PETSc installation"
