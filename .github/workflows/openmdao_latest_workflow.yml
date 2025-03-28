@@ -180,6 +180,9 @@ jobs:
           echo "============================================================="
           echo "Install latest pyoptsparse"
           echo "============================================================="
+          # make sure lapack and compilers are compatible
+          conda install gcc gfortran lapack
+
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
           BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
           if [[ "${{ matrix.SNOPT }}" ]]; then
