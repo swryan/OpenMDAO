@@ -51,6 +51,7 @@ jobs:
             PY: 3
             NUMPY: 2
             PETSc: true
+            PYOPTSPARSE: true
 
           # test latest versions on macos
           - NAME: MacOS Latest
@@ -58,6 +59,7 @@ jobs:
             PY: 3
             NUMPY: 2
             PETSc: true
+            PYOPTSPARSE: true
 
     runs-on: ${{ matrix.OS }}
 
