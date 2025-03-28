@@ -43,6 +43,12 @@ _global_optimizers = {'differential_evolution', 'basinhopping'}
 if Version(scipy_version) >= Version("1.2"):  # Only available in newer versions
     _global_optimizers |= {'shgo', 'dual_annealing'}
 
+if Version(scipy_version) >= Version("1.14"):
+    # COBYQA supported starting with SciPy Version 1.14
+    _optimizers.add('COBYQA')
+    _bounds_optimizers |= {'COBYQA'}
+    _constraint_optimizers |= {'COBYQA'}
+
 # Global optimizers and optimizers in minimize
 _all_optimizers = _optimizers | _global_optimizers
 
@@ -82,7 +88,7 @@ class ScipyOptimizeDriver(Driver):
     """
     Driver wrapper for the scipy.optimize.minimize family of local optimizers.
 
-    Inequality constraints are supported by COBYLA and SLSQP,
+    Inequality constraints are supported by COBYLA, COBYQA and SLSQP,
     but equality constraints are only supported by SLSQP. None of the other
     optimizers support constraints.
 
