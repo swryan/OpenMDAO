@@ -2542,7 +2542,7 @@ class TestScipyOptimizeDriverCOBYQA(unittest.TestCase):
         model = prob.model = SellarDerivativesGrouped(nonlinear_solver=om.NonlinearBlockGS,
                                                       linear_solver=om.ScipyKrylov)
 
-        prob.driver = om.ScipyOptimizeDriver(optimizer='COBYLA', tol=1e-9, disp=False)
+        prob.driver = om.ScipyOptimizeDriver(optimizer='COBYQA', tol=1e-9, disp=False)
 
         model.add_design_var('z', lower=np.array([-10.0, 0.0]), upper=np.array([10.0, 10.0]))
         model.add_design_var('x', lower=0.0, upper=10.0)
