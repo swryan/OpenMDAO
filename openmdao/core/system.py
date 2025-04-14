@@ -952,10 +952,11 @@ class System(object, metaclass=SystemMetaclass):
                     subsys._has_output_adder |= np.any(ref0)
 
                 res_ref = metadata['res_ref']
-                if np.isscalar(res_ref):
-                    subsys._has_resid_scaling |= res_ref != 1.0
-                else:
-                    subsys._has_resid_scaling |= np.any(res_ref != 1.0)
+                if res_ref is not None:
+                    if np.isscalar(res_ref):
+                        subsys._has_resid_scaling |= res_ref != 1.0
+                    else:
+                        subsys._has_resid_scaling |= np.any(res_ref != 1.0)
 
                 if metadata['lower'] is not None or metadata['upper'] is not None:
                     subsys._has_bounds = True
@@ -2385,7 +2386,7 @@ class System(object, metaclass=SystemMetaclass):
                     raise RuntimeError(msg.format(self.msginfo, name, var_units, units))
 
                 # Derivation of the total scaler and total adder for design variables:
-                # Given based design variable value y
+                # Given base design variable value y
                 # First we apply the desired unit conversion
                 # y_in_desired_units = unit_scaler * (y + unit_adder)
                 # Then we apply the user-declared scaling
@@ -5544,8 +5545,6 @@ class System(object, metaclass=SystemMetaclass):
             The value of the requested output/input variable.
         """
         abs_names = name2abs_names(self, name)
-        if not abs_names:
-            raise KeyError('{}: Variable "{}" not found.'.format(self.msginfo, name))
         simp_units = simplify_unit(units)
 
         if from_src:
@@ -5663,24 +5662,21 @@ class System(object, metaclass=SystemMetaclass):
         except AttributeError:
             ginputs = {}  # could happen if this system is not a Group
 
-        if abs_names:
-            n_proms = len(abs_names)  # for output this will never be > 1
-            if n_proms > 1 and name in ginputs:
-                abs_name = ginputs[name][0].get('use_tgt', abs_names[0])
-            else:
-                abs_name = abs_names[0]
-
-            if not has_vectors:
-                has_dyn_shape = []
-                for n in abs_names:
-                    if n in all_meta['input']:
-                        m = all_meta['input'][n]
-                        if 'shape_by_conn' in m and m['shape_by_conn']:
-                            has_dyn_shape.append(True)
-                    else:
-                        has_dyn_shape.append(False)
+        n_proms = len(abs_names)  # for output this will never be > 1
+        if n_proms > 1 and name in ginputs:
+            abs_name = ginputs[name][0].get('use_tgt', abs_names[0])
         else:
-            raise KeyError(f'{model.msginfo}: Variable "{name}" not found.')
+            abs_name = abs_names[0]
+
+        if not has_vectors:
+            has_dyn_shape = []
+            for n in abs_names:
+                if n in all_meta['input']:
+                    m = all_meta['input'][n]
+                    if 'shape_by_conn' in m and m['shape_by_conn']:
+                        has_dyn_shape.append(True)
+                else:
+                    has_dyn_shape.append(False)
 
         set_units = None
 
