@@ -203,7 +203,7 @@ jobs:
           echo "============================================================="
           if [[  ${{ inputs.use_pypi }} ]]; then
             echo "Installing from PyPi"
-            python -m pip install openmdao.${{ matrix.OPTIONAL }}
+            python -m pip install openmdao${{ matrix.OPTIONAL }}
           elif [[ "${{ matrix.PEP517 }}" == "true" ]]; then
             pip wheel --no-deps --use-pep517 .
             WHEEL=`find openmdao-*.whl`
