@@ -61,6 +61,13 @@ on:
         required: false
         default: false
 
+      use_pypi:
+        type: boolean
+        description: 'Run the build against the published PyPi version of OpenMDAO'
+        required: false
+        default: false
+
+
 run-name:  ${{ inputs.run_name }}
 
 permissions: {}
@@ -194,7 +201,10 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          if [[ "${{ matrix.PEP517 }}" == "true" ]]; then
+          if [[  ${{ inputs.use_pypi }} ]]; then
+            echo "Installing from PyPi"
+            python -m pip install openmdao.${{ matrix.OPTIONAL }}
+          elif [[ "${{ matrix.PEP517 }}" == "true" ]]; then
             pip wheel --no-deps --use-pep517 .
             WHEEL=`find openmdao-*.whl`
             echo "-----------------------------------------------------------"
