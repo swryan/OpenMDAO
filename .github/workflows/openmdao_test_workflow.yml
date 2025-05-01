@@ -23,37 +23,37 @@ on:
         type: boolean
         description: 'Include Ubuntu Baseline in test matrix'
         required: false
-        default: false
+        default: true
 
       MacOS_Baseline:
         type: boolean
         description: 'Include MacOS Baseline in test matrix'
         required: false
-        default: false
+        default: true
 
       MacOS_ARM:
         type: boolean
         description: 'Include MacOS ARM in test matrix'
         required: false
-        default: false
+        default: true
 
       Windows_Baseline:
         type: boolean
         description: 'Include Windows Baseline in test matrix'
         required: false
-        default: false
+        default: true
 
       Ubuntu_Minimal:
         type: boolean
         description: 'Include Ubuntu Minimal in test matrix'
         required: false
-        default: false
+        default: true
 
       Ubuntu_Oldest:
         type: boolean
         description: 'Include Ubuntu Oldest in test matrix'
         required: false
-        default: false
+        default: true
 
       debug_enabled:
         type: boolean
