@@ -63,7 +63,7 @@ on:
 
       use_pypi:
         type: boolean
-        description: 'Run the build against the published PyPi version of OpenMDAO'
+        description: 'Run tests against the published PyPi version of OpenMDAO'
         required: false
         default: false
 
@@ -201,7 +201,7 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          if [[  ${{ inputs.use_pypi }} ]]; then
+          if [[  "${{ inputs.use_pypi }}" == "true" ]]; then
             echo "-----------------------------------------------------------"
             echo "Installing from PyPi"
             echo "-----------------------------------------------------------"
@@ -558,7 +558,7 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          if [[  ${{ inputs.use_pypi }} ]]; then
+          if [[  "${{ inputs.use_pypi }}" == "true" ]]; then
             echo "-----------------------------------------------------------"
             echo "Installing from PyPi"
             echo "-----------------------------------------------------------"
