@@ -202,7 +202,9 @@ jobs:
           echo "Install OpenMDAO"
           echo "============================================================="
           if [[  ${{ inputs.use_pypi }} ]]; then
+            echo "-----------------------------------------------------------"
             echo "Installing from PyPi"
+            echo "-----------------------------------------------------------"
             python -m pip install openmdao${{ matrix.OPTIONAL }}
           elif [[ "${{ matrix.PEP517 }}" == "true" ]]; then
             pip wheel --no-deps --use-pep517 .
@@ -542,7 +544,7 @@ jobs:
           channels: conda-forge
           conda-remove-defaults: true
 
-      - name: Install OpenDMAO
+      - name: Install OpenMDAO
         run: |
           conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
 
@@ -557,8 +559,10 @@ jobs:
           echo "Install OpenMDAO"
           echo "============================================================="
           if [[  ${{ inputs.use_pypi }} ]]; then
+            echo "-----------------------------------------------------------"
             echo "Installing from PyPi"
-            python -m pip install openmdao${{ matrix.OPTIONAL }}
+            echo "-----------------------------------------------------------"
+            python -m pip install openmdao[all]
           else
             python -m pip install .[all]
           fi
