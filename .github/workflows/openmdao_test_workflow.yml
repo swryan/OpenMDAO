@@ -8,7 +8,7 @@ on:
     branches: [ master ]
 
   # Allow running the workflow manually from the Actions tab
-  # All jobs are excluded by default, desired jobs must be selected
+  # All jobs are included by default and may be deselected if desired
   workflow_dispatch:
 
     inputs:
@@ -556,7 +556,12 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          python -m pip install .[all]
+          if [[  ${{ inputs.use_pypi }} ]]; then
+            echo "Installing from PyPi"
+            python -m pip install openmdao${{ matrix.OPTIONAL }}
+          else
+            python -m pip install .[all]
+          fi
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
