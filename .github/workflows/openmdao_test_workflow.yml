@@ -558,14 +558,14 @@ jobs:
           echo "============================================================="
           echo "Install OpenMDAO"
           echo "============================================================="
-          if [[  "${{ inputs.use_pypi }}" == "true" ]]; then
+          if ([[  "${{ inputs.use_pypi }}" == "true" ]] {
             echo "-----------------------------------------------------------"
             echo "Installing from PyPi"
             echo "-----------------------------------------------------------"
             python -m pip install openmdao[all]
-          else
+          } else {
             python -m pip install .[all]
-          fi
+          }
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
