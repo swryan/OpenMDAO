@@ -301,7 +301,7 @@ jobs:
           echo "Install pyoptsparse"
           echo "============================================================="
 
-          conda install gcc gfortran cython liblapack -q -y
+          conda install compilers cython liblapack -q -y
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
             if [[ "${{ matrix.SNOPT }}" ]]; then
