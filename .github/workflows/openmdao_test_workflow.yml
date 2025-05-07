@@ -301,6 +301,8 @@ jobs:
           echo "Install pyoptsparse"
           echo "============================================================="
 
+          conda install gcc gfortran cython liblapack -q -y
+
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
             if [[ "${{ matrix.SNOPT }}" ]]; then
               echo "SNOPT ${{ matrix.SNOPT }} was requested but is not available on conda-forge"
@@ -574,7 +576,7 @@ jobs:
           echo "============================================================="
           echo "Install mkl 2024.1.0 (test failure with 2024.2.2)"
           echo "============================================================="
-          conda install mkl=2024.1.0
+          echo conda install mkl=2024.1.0
 
           echo "============================================================="
           echo "Install OpenMDAO"
