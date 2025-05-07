@@ -55,6 +55,12 @@ on:
         required: false
         default: true
 
+      Ubuntu_Newer:
+        type: boolean
+        description: 'Include Ubuntu Newer in test matrix'
+        required: false
+        default: true
+
       debug_enabled:
         type: boolean
         description: 'Run the build with tmate debugging enabled (https://github.com/marketplace/actions/debugging-with-tmate)'
@@ -131,6 +137,21 @@ jobs:
             SCIPY: '1.14'
             OPTIONAL: '[test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Minimal }}
+
+          # test newer versions on Ubuntu
+          - NAME: Ubuntu Newer
+            OS: ubuntu-24.04
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PETSc: '3.20'
+            PYOPTSPARSE: 'v2.13.1'
+            # PAROPT: true
+            SNOPT: '7.7'
+            OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
+            BANDIT: true
+            PEP517: true
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
 
           # test oldest supported versions
           - NAME: Ubuntu Oldest
