@@ -18,9 +18,7 @@ from openmdao.test_suite.components.paraboloid_mat_vec import ParaboloidMatVec
 from openmdao.test_suite.components.array_comp import ArrayComp
 from openmdao.utils.assert_utils import assert_near_equal, assert_warning, assert_no_warning, \
      assert_check_partials, assert_check_totals
-from openmdao.utils.om_warnings import DerivativesWarning, OMInvalidCheckDerivativesOptionsWarning,\
-     reset_warning_registry
-
+from openmdao.utils.om_warnings import DerivativesWarning, OMInvalidCheckDerivativesOptionsWarning
 from openmdao.utils.testing_utils import set_env_vars_context, compare_prob_vs_comp_check_partials,\
     snum_equal, use_tempdirs
 from openmdao.utils.array_utils import safe_norm
@@ -2079,11 +2077,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         #    Expected result: Error
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
-        with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
+        msg = expected_check_partials_error.format(prob=prob, var='x', comp=parab)
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg) as cm:
             prob.check_partials(method='fd')
-
-        self.assertEqual(str(cm.exception),
-                         expected_check_partials_error.format(prob=prob, var='x', comp=parab))
 
         # Scenario 3:
         #    Compute partials: fd, with default options
@@ -2125,11 +2121,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         #    Expected result: Error since using fd to check fd. All options the same
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
-        with reset_warning_registry():
-            with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
-                prob.check_partials(method='cs')
-        self.assertEqual(str(cm.exception),
-                         expected_check_partials_error.format(prob=prob, var='x', comp=parab))
+        msg = expected_check_partials_error.format(prob=prob, var='x', comp=parab)
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg) as cm:
+            prob.check_partials(method='cs')
 
         # Scenario 7:
         #    Compute partials: fd, with default options
