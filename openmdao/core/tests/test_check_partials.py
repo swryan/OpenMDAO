@@ -2078,7 +2078,7 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
         msg = expected_check_partials_error.format(prob=prob, var='x', comp=parab)
-        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg) as cm:
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg):
             prob.check_partials(method='fd')
 
         # Scenario 3:
@@ -2122,7 +2122,7 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
         msg = expected_check_partials_error.format(prob=prob, var='x', comp=parab)
-        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg) as cm:
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg):
             prob.check_partials(method='cs')
 
         # Scenario 7:
@@ -2143,10 +2143,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
         parab.set_check_partial_options('*')
-        with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
+        msg = expected_check_partials_error.format(prob=prob, var='x', comp=parab)
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg):
             prob.check_partials()
-        self.assertEqual(str(cm.exception),
-                         expected_check_partials_error.format(prob=prob, var='x', comp=parab))
 
         # Scenario 9:
         #    Compute partials: fd, with default options
@@ -2202,10 +2201,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         prob, parab = create_problem(force_alloc_complex=True)
         parab.declare_partials(of='*', wrt='*', method='cs')
         parab.set_check_partial_options('*', method='cs')
-        with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
+        msg = expected_check_partials_error.format(prob=prob, var='x', comp=parab)
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg):
             prob.check_partials()
-        self.assertEqual(str(cm.exception),
-                         expected_check_partials_error.format(prob=prob, var='x', comp=parab))
 
         # Scenario 15:
         #    Compute partials: cs, with default options
@@ -2242,10 +2240,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         prob.model.approx_totals()
         prob.setup()
         prob.run_model()
-        with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
+        msg = expected_check_totals_error_msg.format(prob=prob)
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg):
             prob.check_totals()
-        self.assertEqual(str(cm.exception),
-                         expected_check_totals_error_msg.format(prob=prob))
 
         # Scenario 18:
         #    Compute totals: approx on totals using defaults
@@ -2296,10 +2293,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         prob.model.approx_totals(method='cs')
         prob.setup()
         prob.run_model()
-        with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
+        msg = expected_check_totals_error_msg.format(prob=prob)
+        with assert_warning(OMInvalidCheckDerivativesOptionsWarning, msg):
             prob.check_totals(method='cs')
-        self.assertEqual(str(cm.exception),
-                         expected_check_totals_error_msg.format(prob=prob))
 
         # Scenario 22:
         #    Compute totals: fd, the default
