@@ -2077,7 +2077,7 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         #    Expected result: Error
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
-        with self.assertRaises(Exception) as cm:
+        with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
             prob.check_partials(method='fd')
         print(f"{type(cm.exception)=}")
         print(f"{cm=}")
