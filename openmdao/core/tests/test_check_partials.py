@@ -2077,11 +2077,14 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         #    Expected result: Error
         prob, parab = create_problem()
         parab.declare_partials(of='*', wrt='*', method='fd')
-        # with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
-        prob.check_partials(method='fd')
-
-        # self.assertEqual(str(cm.exception),
-        #                  expected_check_partials_error.format(prob=prob, var='x', comp=parab))
+        with self.assertRaises(Exception) as cm:
+            prob.check_partials(method='fd')
+        print(f"{type(cm.exception)=}")
+        print(f"{str(cm.exception)=}")
+        print("---------|" * 30)
+        print("expected_message =", str(expected_check_partials_error.format(prob=prob, var='x', comp=parab)))
+        self.assertEqual(str(cm.exception),
+                         expected_check_partials_error.format(prob=prob, var='x', comp=parab))
 
         # Scenario 3:
         #    Compute partials: fd, with default options
