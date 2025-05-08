@@ -2080,9 +2080,9 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         with self.assertRaises(Exception) as cm:
             prob.check_partials(method='fd')
         print(f"{type(cm.exception)=}")
-        print(f"{str(cm.exception)=}")
-        print("---------|" * 30)
-        print("expected_message =", str(expected_check_partials_error.format(prob=prob, var='x', comp=parab)))
+        print(f"{cm=}")
+        print(f"{cm.exception=}")
+
         self.assertEqual(str(cm.exception),
                          expected_check_partials_error.format(prob=prob, var='x', comp=parab))
 
