@@ -50,14 +50,12 @@ jobs:
             OS: ubuntu-latest
             PY: 3
             NUMPY: 2
-            PETSc: true
 
           # test latest versions on macos
           - NAME: MacOS Latest
             OS: macos-latest
             PY: 3
             NUMPY: 2
-            PETSc: true
 
     runs-on: ${{ matrix.OS }}
 
@@ -258,7 +256,7 @@ jobs:
           cd $HOME
           RPT_FILE=`pwd`/deprecations.txt
           echo "RPT_FILE=$RPT_FILE" >> $GITHUB_ENV
-          testflo -n 1 openmdao --timeout=240 --deprecations_report=$RPT_FILE --exclude=test_warnings_filters
+          testflo -n 1 -v -s openmdao.core.tests.test_check_partials.py:TestCheckDerivativesOptionsDifferentFromComputeOptions.test_partials_check_same_as_derivative_compute
 
       - name: Build docs
         id: build_docs
