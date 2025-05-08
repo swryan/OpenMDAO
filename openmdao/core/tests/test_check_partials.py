@@ -2079,9 +2079,6 @@ class TestCheckDerivativesOptionsDifferentFromComputeOptions(unittest.TestCase):
         parab.declare_partials(of='*', wrt='*', method='fd')
         with self.assertRaises(OMInvalidCheckDerivativesOptionsWarning) as cm:
             prob.check_partials(method='fd')
-        print(f"{type(cm.exception)=}")
-        print(f"{cm=}")
-        print(f"{cm.exception=}")
 
         self.assertEqual(str(cm.exception),
                          expected_check_partials_error.format(prob=prob, var='x', comp=parab))
