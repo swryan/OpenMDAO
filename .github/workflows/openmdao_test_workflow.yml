@@ -144,7 +144,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.22'
+            PETSc: '3.23'
             PYOPTSPARSE: conda-forge
             # PAROPT: true
             SNOPT: '7.7'
@@ -290,7 +290,7 @@ jobs:
                                  print(x.getArray())"
           echo "-----------------------"
 
-          echo "export PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe" >> $GITHUB_ENV
+          echo "PRTE_MCA_rmaps_default_mapping_policy=:oversubscribe" >> $GITHUB_ENV
           echo "OMPI_MCA_rmaps_base_oversubscribe=1" >> $GITHUB_ENV
           echo "OMPI_MCA_btl=^openib" >> $GITHUB_ENV
 
