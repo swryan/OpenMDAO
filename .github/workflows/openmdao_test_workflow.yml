@@ -149,7 +149,6 @@ jobs:
             # PAROPT: true
             SNOPT: '7.7'
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
-            BANDIT: true
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
 
@@ -215,6 +214,8 @@ jobs:
 
       - name: Install OpenMDAO
         run: |
+          sudo apt install libblas-dev liblapack-dev
+
           conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
 
           python -m pip install --upgrade pip
@@ -300,8 +301,6 @@ jobs:
           echo "============================================================="
           echo "Install pyoptsparse"
           echo "============================================================="
-
-          conda install compilers cython liblapack -q -y
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
             if [[ "${{ matrix.SNOPT }}" ]]; then
@@ -576,7 +575,7 @@ jobs:
           echo "============================================================="
           echo "Install mkl 2024.1.0 (test failure with 2024.2.2)"
           echo "============================================================="
-          echo conda install mkl=2024.1.0
+          conda install mkl=2024.1.0
 
           echo "============================================================="
           echo "Install OpenMDAO"
