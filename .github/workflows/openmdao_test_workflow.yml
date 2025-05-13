@@ -626,6 +626,7 @@ jobs:
                     f'Scipy version {scipy.__version__} is not the requested version (${{ matrix.SCIPY }})'"
 
       - name: Run tests
+        id: run_tests
         env:
           OPENMDAO_CHECK_ALL_PARTIALS: true
         run: |
