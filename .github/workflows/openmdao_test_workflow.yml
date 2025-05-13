@@ -214,10 +214,6 @@ jobs:
 
       - name: Install OpenMDAO
         run: |
-          if [[ "${{ matrix.OS }}" == "ubuntu-24.04" ]]; then
-            sudo apt install libblas-dev liblapack-dev
-          fi
-
           conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
 
           python -m pip install --upgrade pip
@@ -241,7 +237,12 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
-      - name: Install MacOS-specific dependencies
+      - name: Install Ubuntu 24.04 specific dependencies
+        if: matrix.OS == 'ubuntu-24.04'
+        run: |
+          sudo apt install libblas-dev liblapack-dev
+
+      - name: Install MacOS 13 specific dependencies
         if: matrix.OS == 'macos-13'
         run: |
           conda install swig
@@ -516,6 +517,7 @@ jobs:
               if (test_fail) {
                   core.setFailed('Tests failed.');
               }
+
 
   windows_tests:
     runs-on: windows-latest
