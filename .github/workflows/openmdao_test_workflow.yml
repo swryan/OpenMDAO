@@ -326,6 +326,7 @@ jobs:
 
             echo "  > Adding SNOPT to conda-forge installation"
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
+            conda insatll -c conda-forge lapack
             build_pyoptsparse -v $SNOPT
           else
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
