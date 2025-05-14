@@ -240,7 +240,7 @@ jobs:
       - name: Install Ubuntu 24.04 specific dependencies
         if: matrix.OS == 'ubuntu-24.04'
         run: |
-          sudo apt install libblas-dev liblapack-dev
+          sudo apt build-dep numpy
 
       - name: Install MacOS 13 specific dependencies
         if: matrix.OS == 'macos-13'
@@ -326,7 +326,6 @@ jobs:
 
             echo "  > Adding SNOPT to conda-forge installation"
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
-            conda insatll -c conda-forge lapack
             build_pyoptsparse -v $SNOPT
           else
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
