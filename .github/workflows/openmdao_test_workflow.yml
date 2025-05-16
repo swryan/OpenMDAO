@@ -330,11 +330,9 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "  > Copying required files from pySNOPT.."
 
-              cd $HOME
-              git checkout https://github.com/mdolab/pyoptsparse
-              cd -
+              git clone https://github.com/mdolab/pyoptsparse $HOME/pyoptsparse
 
-              PYSNOPT_SOURCE=$HOME/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
+              PYSNOPT_SOURCE=$HOME/pyoptsparse/pyoptsparse/pySNOPT/source/
               cp -v $PYSNOPT_SOURCE/*.f src/
               cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
 
