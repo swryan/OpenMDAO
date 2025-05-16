@@ -316,6 +316,8 @@ jobs:
             conda install -c conda-forge pyoptsparse
 
             if [ -d "SNOPT" ] ; then
+              ls -l SNOPT
+
               conda install cython swig compilers cmake meson openmp -q -y
 
               echo "-------------------------------------------------------------"
