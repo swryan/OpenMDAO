@@ -297,20 +297,28 @@ jobs:
           echo "============================================================="
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
+            echo "-------------------------------------------------------------"
+            echo "Installing pyoptsparse from conda-forge"
+            echo "-------------------------------------------------------------"
             conda install -c conda-forge pyoptsparse -q -y
 
             if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
-              echo "  > Secure copying SNOPT over SSH"
+              echo "-------------------------------------------------------------"
+              echo "Getting SNOPT source"
+              echo "-------------------------------------------------------------"
               scp -qr ${{ secrets.SNOPT_LOCATION }} .
             elif [[ "${{ matrix.SNOPT }}" ]]; then
               echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
             fi
 
             if [ -d "SNOPT" ] ; then
-              conda install cython swig compilers cmake meson openmp -q -y
+              echo "-------------------------------------------------------------"
+              echo "Installing build dependencies"
+              echo "-------------------------------------------------------------"
+              conda install cython swig compilers cmake meson openmp -qy
 
               echo "-------------------------------------------------------------"
-              echo "Building SNOPT..."
+              echo "Building SNOPT"
               echo "-------------------------------------------------------------"
               cd SNOPT
               ./configure
@@ -320,14 +328,13 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Building Python bindings"
               echo "-------------------------------------------------------------"
-              echo "  > Copying required files from pySNOPT..."
+              echo "  > Copying required files from pySNOPT..
 
-              if [[ "${{ matrix.OS }}" == "ubuntu-"* ]]; then
-                PYSNOPT_SOURCE=/home/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
-              else
-                PYSNOPT_SOURCE=/Users/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
-              fi
+              cd $HOME
+              git checkout https://github.com/mdolab/pyoptsparse
+              cd -
 
+              PYSNOPT_SOURCE=$HOME/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
               cp -v $PYSNOPT_SOURCE/*.f src/
               cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
 
