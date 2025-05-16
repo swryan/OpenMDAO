@@ -350,7 +350,7 @@ jobs:
               echo "Try to import SNOPT"
               echo "-------------------------------------------------------------"
               echo LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ python -c "import snopt; print(snopt)"
-              python -c "import snopt; print(snopt)"
+              echo python -c "import snopt; print(snopt)"
 
               echo "-------------------------------------------------------------"
               echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
