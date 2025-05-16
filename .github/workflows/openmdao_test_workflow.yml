@@ -312,51 +312,54 @@ jobs:
               elif [[ "${{ matrix.SNOPT }}" ]]; then
                 echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
               fi
+            fi
 
             if [ -d "SNOPT"] ; then
-                echo "-------------------------------------------------------------"
-                echo "Building SNOPT..."
-                echo "-------------------------------------------------------------"
-                cd SNOPT
-                ./configure
-                make
-                make check
+              conda install cython swig compilers cmake meson openmp -q -y
 
-                echo "-------------------------------------------------------------"
-                echo "Building Python bindings"
-                echo "-------------------------------------------------------------"
-                echo "  > Copying required files from pySNOPT..."
+              echo "-------------------------------------------------------------"
+              echo "Building SNOPT..."
+              echo "-------------------------------------------------------------"
+              cd SNOPT
+              ./configure
+              make
+              make check
 
-                if [[ "${{ matrix.OS }}" == "ubuntu-latest" ]]; then
-                  PYSNOPT_SOURCE=/home/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
-                else
-                  PYSNOPT_SOURCE=/Users/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
-                fi
+              echo "-------------------------------------------------------------"
+              echo "Building Python bindings"
+              echo "-------------------------------------------------------------"
+              echo "  > Copying required files from pySNOPT..."
 
-                cp -v $PYSNOPT_SOURCE/*.f src/
-                cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
+              if [[ "${{ matrix.OS }}" == "ubuntu-latest" ]]; then
+                PYSNOPT_SOURCE=/home/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
+              else
+                PYSNOPT_SOURCE=/Users/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
+              fi
 
-                echo "  > Removing problematic files..."
-                rm src/snopth.f
-                rm src/sn27lu77.f
-                rm src/sn27lu90.f
+              cp -v $PYSNOPT_SOURCE/*.f src/
+              cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
 
-                echo "  > Building Python bindings..."
-                python -m numpy.f2py -m snopt -c snopt.pyf src/*.f -L`pwd`/lib -L/lib -lsnopt7
+              echo "  > Removing problematic files..."
+              rm -f src/snopth.f
+              rm -f src/sn27lu77.f
+              rm -f src/sn27lu90.f
 
-                echo "-------------------------------------------------------------"
-                echo "Try to import SNOPT"
-                echo "-------------------------------------------------------------"
-                LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ python -c "import snopt; print(snopt)"
-                python -c "import snopt; print(snopt)"
+              echo "  > Building Python bindings..."
+              python -m numpy.f2py -m snopt -c snopt.pyf src/*.f -L`pwd`/lib -L/lib -lsnopt7
 
-                echo "-------------------------------------------------------------"
-                echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
-                echo "-------------------------------------------------------------"
-                export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
-                echo "PYOPTSPARSE_IMPORT_SNOPT_FROM=$PYOPTSPARSE_IMPORT_SNOPT_FROM" >> $GITHUB_ENV
+              echo "-------------------------------------------------------------"
+              echo "Try to import SNOPT"
+              echo "-------------------------------------------------------------"
+              LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ python -c "import snopt; print(snopt)"
+              python -c "import snopt; print(snopt)"
 
-                cd ../..
+              echo "-------------------------------------------------------------"
+              echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
+              echo "-------------------------------------------------------------"
+              export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
+              echo "PYOPTSPARSE_IMPORT_SNOPT_FROM=$PYOPTSPARSE_IMPORT_SNOPT_FROM" >> $GITHUB_ENV
+
+              cd ../..
             fi
           else
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
