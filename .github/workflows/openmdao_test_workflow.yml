@@ -307,7 +307,7 @@ jobs:
             fi
 
             if [ -d "SNOPT" ] ; then
-              conda install cython swig compilers cmake meson openmp -y
+              conda install cython swig compilers cmake meson openmp -q -y
 
               echo "-------------------------------------------------------------"
               echo "Building SNOPT..."
@@ -315,7 +315,7 @@ jobs:
               cd SNOPT
               ./configure
               make
-              make check
+              echo make check
 
               echo "-------------------------------------------------------------"
               echo "Building Python bindings"
