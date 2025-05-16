@@ -237,16 +237,6 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
-      - name: Install Ubuntu 24.04 specific dependencies
-        if: matrix.OS == 'ubuntu-24.04'
-        run: |
-          sudo apt install libblas-dev liblapack-dev
-
-      - name: Install MacOS 13 specific dependencies
-        if: matrix.OS == 'macos-13'
-        run: |
-          conda install swig
-
       - name: Install PETSc
         if: matrix.PETSc
         run: |
@@ -300,18 +290,76 @@ jobs:
 
       - name: Install pyOptSparse
         if: matrix.PYOPTSPARSE
+        continue-on-error: false
         run: |
           echo "============================================================="
           echo "Install pyoptsparse"
           echo "============================================================="
 
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
-            if [[ "${{ matrix.SNOPT }}" ]]; then
-              echo "SNOPT ${{ matrix.SNOPT }} was requested but is not available on conda-forge"
+            echo "-------------------------------------------------------------"
+            echo "Installing pyoptsparse from conda-forge"
+            echo "-------------------------------------------------------------"
+            conda install -c conda-forge pyoptsparse -q -y
+
+            if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
+              echo "-------------------------------------------------------------"
+              echo "Getting SNOPT source"
+              echo "-------------------------------------------------------------"
+              scp -qr ${{ secrets.SNOPT_LOCATION }} .
+            elif [[ "${{ matrix.SNOPT }}" ]]; then
+              echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
             fi
 
-            conda install -c conda-forge pyoptsparse
+            if [ -d "SNOPT" ] ; then
+              echo "-------------------------------------------------------------"
+              echo "Installing build dependencies"
+              echo "-------------------------------------------------------------"
+              conda install cython swig compilers cmake meson openmp -q -y
+
+              echo "-------------------------------------------------------------"
+              echo "Building SNOPT"
+              echo "-------------------------------------------------------------"
+              cd SNOPT
+              ./configure
+              make
+              echo make check
+
+              echo "-------------------------------------------------------------"
+              echo "Building Python bindings"
+              echo "-------------------------------------------------------------"
+              echo "  > Copying required files from pySNOPT.."
+
+              git clone https://github.com/mdolab/pyoptsparse $HOME/pyoptsparse
+
+              PYSNOPT_SOURCE=$HOME/pyoptsparse/pyoptsparse/pySNOPT/source/
+              cp -v $PYSNOPT_SOURCE/*.f src/
+              cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
+
+              echo "  > Removing problematic files..."
+              rm -f src/snopth.f
+              rm -f src/sn27lu77.f
+              rm -f src/sn27lu90.f
+
+              echo "  > Building Python bindings..."
+              python -m numpy.f2py -m snopt -c snopt.pyf src/*.f -L`pwd`/lib -L/lib -lsnopt7
+
+              echo "-------------------------------------------------------------"
+              echo "Try to import SNOPT"
+              echo "-------------------------------------------------------------"
+              echo python -c "import snopt; print(snopt)"
+
+              echo "-------------------------------------------------------------"
+              echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
+              echo "-------------------------------------------------------------"
+              export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
+              echo "PYOPTSPARSE_IMPORT_SNOPT_FROM=$PYOPTSPARSE_IMPORT_SNOPT_FROM" >> $GITHUB_ENV
+
+              cd ../..
+            fi
           else
+            conda install -c conda-forge swig -q -y
+
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
             if [[ "${{ matrix.PYOPTSPARSE }}" == "latest" ]]; then
