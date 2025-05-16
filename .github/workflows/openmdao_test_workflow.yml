@@ -347,6 +347,7 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Try to import SNOPT"
               echo "-------------------------------------------------------------"
+              LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ python -c "import snopt; print(snopt)"
               python -c "import snopt; print(snopt)"
 
               echo "-------------------------------------------------------------"
