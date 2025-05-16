@@ -98,6 +98,7 @@ jobs:
             PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
+            USE_BUILD_PYOPTSPARSE: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             BANDIT: true
             PEP517: true
@@ -113,6 +114,7 @@ jobs:
             PYOPTSPARSE: 'v2.13.0'
             # PAROPT: true
             SNOPT: '7.7'
+            USE_BUILD_PYOPTSPARSE: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
@@ -148,7 +150,6 @@ jobs:
             PYOPTSPARSE: 2.13.1
             # PAROPT: true
             SNOPT: '7.7'
-            USE_BUILD_PYOPTSPARSE: false
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
@@ -164,6 +165,7 @@ jobs:
             PETSc: '3.13'
             PYOPTSPARSE: 'v2.10.2'
             SNOPT: '7.2'
+            USE_BUILD_PYOPTSPARSE: true
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
 
@@ -290,7 +292,7 @@ jobs:
           echo "TMPDIR=/tmp" >> $GITHUB_ENV
 
       - name: Install pyOptSparse from GitHub
-        if: matrix.PYOPTSPARSE && matrix.USE_BUILD_PYOPTSPARSE == 'false'
+        if: matrix.PYOPTSPARSE && ! matrix.USE_BUILD_PYOPTSPARSE
         continue-on-error: false
         run: |
           echo "============================================================="
@@ -363,7 +365,7 @@ jobs:
           pip install git+https://github.com/mdolab/pyoptsparse@{{ matrix.PYOPTSPARSE }}
 
       - name: Install pyOptSparse using build_pyoptsparse
-        if: matrix.PYOPTSPARSE && matrix.USE_BUILD_PYOPTSPARSE != 'false'
+        if: matrix.PYOPTSPARSE && matrix.USE_BUILD_PYOPTSPARSE
         continue-on-error: false
         run: |
           conda install -c conda-forge swig -q -y
