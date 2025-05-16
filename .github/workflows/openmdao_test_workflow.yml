@@ -315,7 +315,7 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Installing build dependencies"
               echo "-------------------------------------------------------------"
-              conda install cython swig compilers cmake meson openmp -q -y
+              conda install cython swig compilers cmake -q -y
 
               echo "-------------------------------------------------------------"
               echo "Building SNOPT"
