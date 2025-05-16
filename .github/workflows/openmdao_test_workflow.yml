@@ -289,32 +289,33 @@ jobs:
           echo "TMPDIR=/tmp" >> $GITHUB_ENV
 
       - name: Install pyOptSparse
+        id: pyOptSparse
         if: matrix.PYOPTSPARSE
         run: |
           echo "============================================================="
           echo "Install pyoptsparse"
           echo "============================================================="
 
+          if [[ "${{ matrix.SNOPT }}" ]]; then
+            if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
+              echo "  > Secure copying SNOPT 7.7 over SSH"
+              mkdir SNOPT
+              scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
+              SNOPT="-s SNOPT/src"
+            elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
+              echo "  > Secure copying SNOPT 7.2 over SSH"
+              mkdir SNOPT
+              scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
+              SNOPT="-s SNOPT/source"
+            elif [[ "${{ matrix.SNOPT }}" ]]; then
+              echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
+            fi
+          fi
+
           if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
             conda install -c conda-forge pyoptsparse
 
-            if [[ "${{ matrix.SNOPT }}" ]]; then
-              if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
-                echo "  > Secure copying SNOPT 7.7 over SSH"
-                mkdir SNOPT
-                scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
-                SNOPT="-s SNOPT/src"
-              elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
-                echo "  > Secure copying SNOPT 7.2 over SSH"
-                mkdir SNOPT
-                scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
-                SNOPT="-s SNOPT/source"
-              elif [[ "${{ matrix.SNOPT }}" ]]; then
-                echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
-              fi
-            fi
-
-            if [ -d "SNOPT"] ; then
+            if [ -d "SNOPT" ] ; then
               conda install cython swig compilers cmake meson openmp -q -y
 
               echo "-------------------------------------------------------------"
@@ -330,7 +331,7 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "  > Copying required files from pySNOPT..."
 
-              if [[ "${{ matrix.OS }}" == "ubuntu-latest" ]]; then
+              if [[ "${{ matrix.OS }}" == "ubuntu-"* ]]; then
                 PYSNOPT_SOURCE=/home/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
               else
                 PYSNOPT_SOURCE=/Users/runner/work/pyoptsparse/pyoptsparse/pyoptsparse/pySNOPT/source/
@@ -362,6 +363,8 @@ jobs:
               cd ../..
             fi
           else
+            conda install -c conda-forge swig -q -y
+
             python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
             if [[ "${{ matrix.PYOPTSPARSE }}" == "latest" ]]; then
@@ -380,22 +383,18 @@ jobs:
               PAROPT="-a"
             fi
 
-            if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
-              echo "  > Secure copying SNOPT 7.7 over SSH"
-              mkdir SNOPT
-              scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
-              SNOPT="-s SNOPT/src"
-            elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
-              echo "  > Secure copying SNOPT 7.2 over SSH"
-              mkdir SNOPT
-              scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
-              SNOPT="-s SNOPT/source"
-            elif [[ "${{ matrix.SNOPT }}" ]]; then
-              echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
-            fi
-
             build_pyoptsparse -v $BRANCH $PAROPT $SNOPT
           fi
+
+      - name: Slack pyOptSparse issue
+        if: steps.pyOptSparse.outcome == 'failure'
+        uses: act10ns/slack@v2.0.0
+        with:
+          webhook-url: ${{ secrets.SLACK_WEBHOOK_URL }}
+          status: ${{ steps.pyOptSparse.outcome }}
+          message:
+            pyOptSparse installation failed on `${{ matrix.NAME }}` build.
+            ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
       - name: Install optional dependencies
         if: matrix.OPTIONAL == '[all]'
