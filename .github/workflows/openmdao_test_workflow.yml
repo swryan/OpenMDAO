@@ -145,9 +145,10 @@ jobs:
             NUMPY: '2.2'
             SCIPY: '1.15'
             PETSc: '3.23'
-            PYOPTSPARSE: conda-forge
+            PYOPTSPARSE: 2.13.1
             # PAROPT: true
             SNOPT: '7.7'
+            USE_BUILD_PYOPTSPARSE: false
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
@@ -288,120 +289,118 @@ jobs:
           echo "Workaround for intermittent failures with OMPI https://github.com/open-mpi/ompi/issues/7393"
           echo "TMPDIR=/tmp" >> $GITHUB_ENV
 
-      - name: Install pyOptSparse
-        if: matrix.PYOPTSPARSE
+      - name: Install pyOptSparse from GitHub
+        if: matrix.PYOPTSPARSE && matrix.USE_BUILD_PYOPTSPARSE == 'false'
         continue-on-error: false
         run: |
           echo "============================================================="
           echo "Install pyoptsparse"
           echo "============================================================="
-
-          if [[ "${{ matrix.PYOPTSPARSE }}" == "conda-forge" ]]; then
+          if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
             echo "-------------------------------------------------------------"
-            echo "Installing pyoptsparse from conda-forge"
+            echo "Getting SNOPT source"
             echo "-------------------------------------------------------------"
-            conda install -c conda-forge pyoptsparse -q -y
-
-            if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
-              echo "-------------------------------------------------------------"
-              echo "Getting SNOPT source"
-              echo "-------------------------------------------------------------"
-              scp -qr ${{ secrets.SNOPT_LOCATION }} .
-            elif [[ "${{ matrix.SNOPT }}" ]]; then
-              echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
-            fi
-
-            if [ -d "SNOPT" ] ; then
-              echo "-------------------------------------------------------------"
-              echo "Installing build dependencies"
-              echo "-------------------------------------------------------------"
-              conda install cython swig compilers cmake meson openmp -q -y
-
-              echo "-------------------------------------------------------------"
-              echo "Building SNOPT"
-              echo "-------------------------------------------------------------"
-              cd SNOPT
-              ./configure
-              make
-              echo make check
-
-              echo "-------------------------------------------------------------"
-              echo "Building Python bindings"
-              echo "-------------------------------------------------------------"
-              echo "  > Copying required files from pySNOPT.."
-
-              git clone https://github.com/mdolab/pyoptsparse $HOME/pyoptsparse
-
-              PYSNOPT_SOURCE=$HOME/pyoptsparse/pyoptsparse/pySNOPT/source/
-              cp -v $PYSNOPT_SOURCE/*.f src/
-              cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
-
-              echo "  > Removing problematic files..."
-              rm -f src/snopth.f
-              rm -f src/sn27lu77.f
-              rm -f src/sn27lu90.f
-
-              echo "  > Building Python bindings..."
-              python -m numpy.f2py -m snopt -c snopt.pyf src/*.f -L`pwd`/lib -L/lib -lsnopt7
-
-              echo "-------------------------------------------------------------"
-              echo "Try to import SNOPT"
-              echo "-------------------------------------------------------------"
-              export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH
-              echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
-              echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-              if [[ "${{ matrix.OS }}" == "ubuntu"* ]]; then
-                ldconfig -p | grep omp
-                nm -gD /lib/x86_64-linux-gnu/libgomp.so.1
-                nm -gD /lib/x86_64-linux-gnu/libgomp.so.1 | grep GOMP_parallel
-              fi
-              python -c "import snopt; print(snopt)"
-
-              echo "-------------------------------------------------------------"
-              echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
-              echo "-------------------------------------------------------------"
-              export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
-              echo "PYOPTSPARSE_IMPORT_SNOPT_FROM=$PYOPTSPARSE_IMPORT_SNOPT_FROM" >> $GITHUB_ENV
-
-              cd ../..
-            fi
-          else
-            conda install -c conda-forge swig -q -y
-
-            python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
-
-            if [[ "${{ matrix.PYOPTSPARSE }}" == "latest" ]]; then
-              function latest_version() {
-                local REPO_URL=$1/releases/latest
-                local LATEST_URL=`curl -fsSLI -o /dev/null -w %{url_effective} $REPO_URL`
-                local LATEST_VER=`echo $LATEST_URL | awk '{split($0,a,"/tag/"); print a[2]}'`
-                echo $LATEST_VER
-              }
-              BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
-            else
-              BRANCH="-b ${{ matrix.PYOPTSPARSE }}"
-            fi
-
-            if [[ "${{ matrix.PAROPT }}" ]]; then
-              PAROPT="-a"
-            fi
-
-            if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
-              echo "  > Secure copying SNOPT 7.7 over SSH"
-              mkdir SNOPT
-              scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
-              SNOPT="-s SNOPT/src"
-            elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
-              echo "  > Secure copying SNOPT 7.2 over SSH"
-              mkdir SNOPT
-              scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
-              SNOPT="-s SNOPT/source"
-            elif [[ "${{ matrix.SNOPT }}" ]]; then
-              echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
-            fi
-
-            build_pyoptsparse -v $BRANCH $PAROPT $SNOPT
+            scp -qr ${{ secrets.SNOPT_LOCATION }} .
+          elif [[ "${{ matrix.SNOPT }}" ]]; then
+            echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
           fi
+
+          if [ -d "SNOPT" ] ; then
+            echo "-------------------------------------------------------------"
+            echo "Installing build dependencies"
+            echo "-------------------------------------------------------------"
+            conda install cython swig compilers cmake meson openmp -q -y
+
+            echo "-------------------------------------------------------------"
+            echo "Building SNOPT"
+            echo "-------------------------------------------------------------"
+            cd SNOPT
+            ./configure
+            make
+            echo make check
+
+            echo "-------------------------------------------------------------"
+            echo "Building Python bindings"
+            echo "-------------------------------------------------------------"
+            echo "  > Copying required files from pySNOPT.."
+
+            git clone https://github.com/mdolab/pyoptsparse $HOME/pyoptsparse
+
+            PYSNOPT_SOURCE=$HOME/pyoptsparse/pyoptsparse/pySNOPT/source/
+            cp -v $PYSNOPT_SOURCE/*.f src/
+            cp -v $PYSNOPT_SOURCE/f2py/snopt.pyf .
+
+            echo "  > Removing problematic files..."
+            rm -f src/snopth.f
+            rm -f src/sn27lu77.f
+            rm -f src/sn27lu90.f
+
+            echo "  > Building Python bindings..."
+            python -m numpy.f2py -m snopt -c snopt.pyf src/*.f -L`pwd`/lib -L/lib -lsnopt7
+
+            echo "-------------------------------------------------------------"
+            echo "Try to import SNOPT"
+            echo "-------------------------------------------------------------"
+            export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH
+            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
+            echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
+            if [[ "${{ matrix.OS }}" == "ubuntu"* ]]; then
+              ldconfig -p | grep omp
+              nm -gD /lib/x86_64-linux-gnu/libgomp.so.1
+              nm -gD /lib/x86_64-linux-gnu/libgomp.so.1 | grep GOMP_parallel
+            fi
+            python -c "import snopt; print(snopt)"
+
+            echo "-------------------------------------------------------------"
+            echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
+            echo "-------------------------------------------------------------"
+            export PYOPTSPARSE_IMPORT_SNOPT_FROM=`pwd`
+            echo "PYOPTSPARSE_IMPORT_SNOPT_FROM=$PYOPTSPARSE_IMPORT_SNOPT_FROM" >> $GITHUB_ENV
+
+            cd ../..
+          fi
+
+          pip install git+https://github.com/mdolab/pyoptsparse@{{ matrix.PYOPTSPARSE }}
+
+      - name: Install pyOptSparse using build_pyoptsparse
+        if: matrix.PYOPTSPARSE && matrix.USE_BUILD_PYOPTSPARSE != 'false'
+        continue-on-error: false
+        run: |
+          conda install -c conda-forge swig -q -y
+
+          python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
+
+          if [[ "${{ matrix.PYOPTSPARSE }}" == "latest" ]]; then
+            function latest_version() {
+              local REPO_URL=$1/releases/latest
+              local LATEST_URL=`curl -fsSLI -o /dev/null -w %{url_effective} $REPO_URL`
+              local LATEST_VER=`echo $LATEST_URL | awk '{split($0,a,"/tag/"); print a[2]}'`
+              echo $LATEST_VER
+            }
+            BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
+          else
+            BRANCH="-b ${{ matrix.PYOPTSPARSE }}"
+          fi
+
+          if [[ "${{ matrix.PAROPT }}" ]]; then
+            PAROPT="-a"
+          fi
+
+          if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION_77 }}" ]]; then
+            echo "  > Secure copying SNOPT 7.7 over SSH"
+            mkdir SNOPT
+            scp -qr ${{ secrets.SNOPT_LOCATION_77 }} SNOPT
+            SNOPT="-s SNOPT/src"
+          elif [[ "${{ matrix.SNOPT }}" == "7.2" && "${{ secrets.SNOPT_LOCATION_72 }}" ]]; then
+            echo "  > Secure copying SNOPT 7.2 over SSH"
+            mkdir SNOPT
+            scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
+            SNOPT="-s SNOPT/source"
+          elif [[ "${{ matrix.SNOPT }}" ]]; then
+            echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
+          fi
+
+          build_pyoptsparse -v $BRANCH $PAROPT $SNOPT
 
       - name: Install optional dependencies
         if: matrix.OPTIONAL == '[all]'
