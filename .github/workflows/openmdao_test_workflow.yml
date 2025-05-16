@@ -144,7 +144,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            # PETSc: '3.23'
+            PETSc: '3.23'
             PYOPTSPARSE: conda-forge
             # PAROPT: true
             SNOPT: '7.7'
@@ -347,7 +347,6 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Try to import SNOPT"
               echo "-------------------------------------------------------------"
-              echo LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ python -c "import snopt; print(snopt)"
               echo python -c "import snopt; print(snopt)"
 
               echo "-------------------------------------------------------------"
@@ -467,7 +466,7 @@ jobs:
           echo "###################################################"
           cp .coveragerc $HOME
           cd $HOME
-          testflo -n 1 openmdao --timeout=240 --show_skipped --coverage --coverpkg openmdao --durations=20
+          testflo -n 2 openmdao --timeout=240 --show_skipped --coverage --coverpkg openmdao --durations=20
 
       - name: Submit coverage
         id: coveralls
