@@ -347,7 +347,7 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Try to import SNOPT"
               echo "-------------------------------------------------------------"
-              echo python -c "import snopt; print(snopt)"
+              python -c "import snopt; print(snopt)"
 
               echo "-------------------------------------------------------------"
               echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
