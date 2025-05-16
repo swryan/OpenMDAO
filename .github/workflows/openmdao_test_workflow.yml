@@ -315,7 +315,7 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Installing build dependencies"
               echo "-------------------------------------------------------------"
-              conda install cython swig compilers cmake meson openmp -qy
+              conda install cython swig compilers cmake meson openmp -q -y
 
               echo "-------------------------------------------------------------"
               echo "Building SNOPT"
@@ -328,7 +328,7 @@ jobs:
               echo "-------------------------------------------------------------"
               echo "Building Python bindings"
               echo "-------------------------------------------------------------"
-              echo "  > Copying required files from pySNOPT..
+              echo "  > Copying required files from pySNOPT.."
 
               cd $HOME
               git checkout https://github.com/mdolab/pyoptsparse
@@ -345,6 +345,12 @@ jobs:
 
               echo "  > Building Python bindings..."
               python -m numpy.f2py -m snopt -c snopt.pyf src/*.f -L`pwd`/lib -L/lib -lsnopt7
+
+              echo "-------------------------------------------------------------"
+              echo "Try to import SNOPT"
+              echo "-------------------------------------------------------------"
+              echo LD_LIBRARY_PATH=/lib/x86_64-linux-gnu/ python -c "import snopt; print(snopt)"
+              echo python -c "import snopt; print(snopt)"
 
               echo "-------------------------------------------------------------"
               echo "Set PYOPTSPARSE_IMPORT_SNOPT_FROM for subsequent steps"
