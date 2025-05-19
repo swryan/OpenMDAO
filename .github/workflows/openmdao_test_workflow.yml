@@ -117,18 +117,6 @@ jobs:
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
-          # test baseline versions on MacOS/ARM
-          - NAME: MacOS ARM
-            OS: macos-14
-            PY: '3.12'
-            NUMPY: '1.26'
-            SCIPY: '1.14'
-            PETSc: '3.20'
-            PYOPTSPARSE_FROM: 'conda-forge'
-            PYOPTSPARSE: '2.13.1'
-            OPTIONAL: '[all]'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
-
           # test minimal install
           - NAME: Ubuntu Minimal
             OS: ubuntu-24.04
@@ -153,6 +141,18 @@ jobs:
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
+
+          # test newer versions on MacOS/ARM
+          - NAME: MacOS ARM
+            OS: macos-14
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PETSc: '3.23'
+            PYOPTSPARSE_FROM: 'conda-forge'
+            PYOPTSPARSE: '2.13.1'
+            OPTIONAL: '[all]'
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
 
           # test oldest supported versions
           - NAME: Ubuntu Oldest
