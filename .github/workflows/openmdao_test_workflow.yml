@@ -241,6 +241,11 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
+      - name: Install Ubuntu 24.04 specific dependencies
+        if: matrix.OS == 'ubuntu-24.04'
+        run: |
+          sudo apt install libblas-dev liblapack-dev
+
       - name: Install PETSc
         if: matrix.PETSc
         run: |
