@@ -95,10 +95,9 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.14'
             PETSc: '3.20'
-            PYOPTSPARSE: 'v2.13.0'
-            # PAROPT: true
+            PYOPTSPARSE_FROM: 'conda-forge'
+            PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
-            USE_BUILD_PYOPTSPARSE: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             BANDIT: true
             PEP517: true
@@ -111,10 +110,10 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PETSc: '3.20'
-            PYOPTSPARSE: 'v2.13.0'
-            # PAROPT: true
+            PYOPTSPARSE_FROM: 'build_pyoptsparse'
+            PYOPTSPARSE: 'v2.13.1'
             SNOPT: '7.7'
-            USE_BUILD_PYOPTSPARSE: true
+            # PAROPT: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
@@ -125,9 +124,8 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.14'
             PETSc: '3.20'
-            # PYOPTSPARSE: 'v2.13.0'
-            # PAROPT: true
-            # SNOPT: '7.7'
+            PYOPTSPARSE_FROM: 'conda-forge'
+            PYOPTSPARSE: '2.13.1'
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
 
@@ -144,14 +142,14 @@ jobs:
           - NAME: Ubuntu Newer
             OS: ubuntu-24.04
             PY: '3.13'
-            NUMPY: '2'
-            SCIPY: '1'
-            MPICH: '4'
-            PETSc: '3'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            MPICH: '4.3'
+            PETSc: '3.23'
+            PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: 'v2.13.1'
-            # PAROPT: true
             SNOPT: '7.7'
-            USE_BUILD_PYOPTSPARSE: true
+            # PAROPT: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
@@ -165,9 +163,9 @@ jobs:
             OPENMPI: '4.0'
             MPI4PY: '3.0'
             PETSc: '3.13'
+            PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: 'v2.10.2'
             SNOPT: '7.2'
-            USE_BUILD_PYOPTSPARSE: true
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
 
@@ -311,12 +309,12 @@ jobs:
           echo "Workaround for intermittent failures with OMPI https://github.com/open-mpi/ompi/issues/7393"
           echo "TMPDIR=/tmp" >> $GITHUB_ENV
 
-      - name: Install pyOptSparse from GitHub
-        if: matrix.PYOPTSPARSE && ! matrix.USE_BUILD_PYOPTSPARSE
+      - name: Build SNOPT
+        if: matrix.PYOPTSPARSE_FROM != 'build_pyoptsparse' && matrix.SNOPT
         continue-on-error: false
         run: |
           echo "============================================================="
-          echo "Install pyoptsparse"
+          echo "Build SNOPT library"
           echo "============================================================="
           if [[ "${{ secrets.SNOPT_LOCATION }}" && "${{ matrix.SNOPT }}" == "7.7" ]]; then
             echo "-------------------------------------------------------------"
@@ -382,10 +380,16 @@ jobs:
             cd ../..
           fi
 
+      - name: Install pyOptSparse from GitHub
+        if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'build_pyoptsparse'
           pip install git+https://github.com/mdolab/pyoptsparse@{{ matrix.PYOPTSPARSE }}
 
+      - name: Install pyOptSparse from conda-forge
+        if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'conda-forge'
+          conda install -c conda-forge pyoptsparse={{ matrix.PYOPTSPARSE }}
+
       - name: Install pyOptSparse using build_pyoptsparse
-        if: matrix.PYOPTSPARSE && matrix.USE_BUILD_PYOPTSPARSE
+        if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'build_pyoptsparse'
         continue-on-error: false
         run: |
           conda install -c conda-forge swig -q -y
