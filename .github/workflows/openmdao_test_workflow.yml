@@ -110,8 +110,8 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.13'
             PETSc: '3.20'
-            PYOPTSPARSE_FROM: 'build_pyoptsparse'
-            PYOPTSPARSE: 'v2.13.1'
+            PYOPTSPARSE_FROM: 'conda-forge'
+            PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
             # PAROPT: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
@@ -381,7 +381,7 @@ jobs:
           fi
 
       - name: Install pyOptSparse from GitHub
-        if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'build_pyoptsparse'
+        if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'github'
         run: |
           pip install git+https://github.com/mdolab/pyoptsparse@${{ matrix.PYOPTSPARSE }}
 
