@@ -146,8 +146,9 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
+            OPENMPI: '4'
             PETSc: '3.23'
-            PYOPTSPARSE: 2.13.1
+            PYOPTSPARSE: 'v2.13.1'
             # PAROPT: true
             SNOPT: '7.7'
             USE_BUILD_PYOPTSPARSE: true
