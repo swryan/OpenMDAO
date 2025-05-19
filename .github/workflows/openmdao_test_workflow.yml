@@ -267,6 +267,15 @@ jobs:
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
+
+          if [[ "${{ matrix.MPICH }}" ]]; then
+            COMPILERS="mpich-mpicc=${{ matrix.MPICH }}"
+          if [[ "${{ matrix.OPENMPI }}" ]]; then
+            COMPILERS="openmpi-mpicc=${{ matrix.OPENMPI }}"
+          else
+            COMPILERS="openmpi-mpicc"
+          fi
+
           if [[ "${{ matrix.PETSc }}" == "3" ]]; then
             python -m pip install git+https://github.com/mpi4py/mpi4py
             python -m pip install petsc petsc4py
