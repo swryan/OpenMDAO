@@ -150,6 +150,7 @@ jobs:
             PYOPTSPARSE: 2.13.1
             # PAROPT: true
             SNOPT: '7.7'
+            USE_BUILD_PYOPTSPARSE: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
