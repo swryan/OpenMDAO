@@ -133,7 +133,7 @@ jobs:
 
           # test minimal install
           - NAME: Ubuntu Minimal
-            OS: ubuntu-latest
+            OS: ubuntu-24.04
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.14'
@@ -144,10 +144,10 @@ jobs:
           - NAME: Ubuntu Newer
             OS: ubuntu-24.04
             PY: '3.13'
-            NUMPY: '2.2'
-            SCIPY: '1.15'
-            OPENMPI: '4'
-            PETSc: '3.23'
+            NUMPY: '2'
+            SCIPY: '1'
+            MPICH: '4'
+            PETSc: '3'
             PYOPTSPARSE: 'v2.13.1'
             # PAROPT: true
             SNOPT: '7.7'
@@ -242,24 +242,28 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
-      - name: Install Ubuntu 24.04 specific dependencies
-        if: matrix.OS == 'ubuntu-24.04'
+      - name: Install compilers
         run: |
-          sudo apt install libblas-dev liblapack-dev
+          echo "============================================================="
+          echo "Install compilers"
+          echo "============================================================="
+
+          if [[ "${{ matrix.BREW }}" ]]; then
+            brew install swig meson
+            if [[ "${{ matrix.OS }}" == "macos-14" ]]; then
+              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+            fi
+          else
+            conda install compilers cython swig -q -y
+          fi
+
+          if [[ "${{ matrix.XCODE }}" ]]; then
+            sudo xcode-select -s "/Applications/Xcode_${{ matrix.XCODE }}.app"
+          fi
 
       - name: Install PETSc
         if: matrix.PETSc
         run: |
-          echo "============================================================="
-          echo "Install compilers for PETSc"
-          echo "============================================================="
-          if [[ "${{ matrix.OPENMPI }}" ]]; then
-            COMPILERS="cython compilers openmpi-mpicc=${{ matrix.OPENMPI }}"
-          else
-            COMPILERS="cython compilers openmpi-mpicc"
-          fi
-          conda install $COMPILERS -q -y
-
           echo "============================================================="
           echo "Install PETSc"
           echo "============================================================="
@@ -305,7 +309,7 @@ jobs:
           echo "============================================================="
           echo "Install pyoptsparse"
           echo "============================================================="
-          if [[ "${{ matrix.SNOPT }}" == "7.7" && "${{ secrets.SNOPT_LOCATION }}" ]]; then
+          if [[ "${{ secrets.SNOPT_LOCATION }}" && "${{ matrix.SNOPT }}" == "7.7" ]]; then
             echo "-------------------------------------------------------------"
             echo "Getting SNOPT source"
             echo "-------------------------------------------------------------"
