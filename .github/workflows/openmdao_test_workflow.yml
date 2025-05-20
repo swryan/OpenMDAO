@@ -31,9 +31,9 @@ on:
         required: false
         default: true
 
-      MacOS_ARM:
+      MacOS_ARM_Baseline:
         type: boolean
-        description: 'Include MacOS ARM in test matrix'
+        description: 'Include MacOS ARM Baseline in test matrix'
         required: false
         default: true
 
@@ -52,12 +52,6 @@ on:
       Ubuntu_Oldest:
         type: boolean
         description: 'Include Ubuntu Oldest in test matrix'
-        required: false
-        default: true
-
-      Ubuntu_Newer:
-        type: boolean
-        description: 'Include Ubuntu Newer in test matrix'
         required: false
         default: true
 
@@ -116,6 +110,19 @@ jobs:
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
+          # test baseline versions on MacOS/ARM
+          - NAME: MacOS ARM Baseline
+            OS: macos-14
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PETSc: '3.23'
+            PYOPTSPARSE_FROM: 'build_pyoptsparse'
+            PYOPTSPARSE: '2.13.1'
+            SNOPT: '7.7'
+            OPTIONAL: '[all]'
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM_Baseline }}
+
           # test minimal install
           - NAME: Ubuntu Minimal
             OS: ubuntu-24.04
@@ -124,35 +131,6 @@ jobs:
             SCIPY: '1.14'
             OPTIONAL: '[test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Minimal }}
-
-          # test newer versions on Ubuntu
-          - NAME: Ubuntu ParOpt
-            OS: ubuntu-24.04
-            PY: '3.13'
-            NUMPY: '2.2'
-            SCIPY: '1.15'
-            MPICH: '4.3'
-            PETSc: '3.23'
-            PYOPTSPARSE_FROM: 'build_pyoptsparse'
-            PYOPTSPARSE: 'v2.13.1'
-            SNOPT: '7.7'
-            PAROPT: true
-            OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
-            PEP517: true
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
-
-          # test newer versions on MacOS/ARM
-          - NAME: MacOS ARM
-            OS: macos-14
-            PY: '3.13'
-            NUMPY: '2.2'
-            SCIPY: '1.15'
-            PETSc: '3.23'
-            PYOPTSPARSE_FROM: 'conda-forge'
-            PYOPTSPARSE: '2.13.1'
-            SNOPT: '7.7'
-            OPTIONAL: '[all]'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
 
           # test oldest supported versions
           - NAME: Ubuntu Oldest
@@ -166,7 +144,6 @@ jobs:
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: 'v2.10.2'
             SNOPT: '7.2'
-            PAROPT: true
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
 
