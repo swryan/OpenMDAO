@@ -231,7 +231,7 @@ jobs:
               ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
             fi
           else
-            conda install compilers cython swig -q -y
+            conda install cython swig compilers cmake meson openmp -q -y
           fi
 
           if [[ "${{ matrix.XCODE }}" ]]; then
@@ -246,11 +246,11 @@ jobs:
           echo "============================================================="
 
           if [[ "${{ matrix.MPICH }}" ]]; then
-            conda install mpich-mpicc=${{ matrix.MPICH }}
+            conda install mpich-mpicc=${{ matrix.MPICH }} -q -y
           elif [[ "${{ matrix.OPENMPI }}" ]]; then
-            conda install openmpi-mpicc=${{ matrix.OPENMPI }}
+            conda install openmpi-mpicc=${{ matrix.OPENMPI }} -q -y
           else
-            conda install openmpi-mpicc
+            conda install openmpi-mpicc -q -y
           fi
 
           if [[ "${{ matrix.PETSc }}" == "3" ]]; then
@@ -305,11 +305,6 @@ jobs:
           fi
 
           if [ -d "SNOPT" ] ; then
-            echo "-------------------------------------------------------------"
-            echo "Installing build dependencies"
-            echo "-------------------------------------------------------------"
-            conda install cython swig compilers cmake meson openmp -q -y
-
             echo "-------------------------------------------------------------"
             echo "Building SNOPT"
             echo "-------------------------------------------------------------"
@@ -367,7 +362,7 @@ jobs:
       - name: Install pyOptSparse from conda-forge
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'conda-forge'
         run: |
-          conda install -c conda-forge pyoptsparse=${{ matrix.PYOPTSPARSE }}
+          conda install -c conda-forge pyoptsparse=${{ matrix.PYOPTSPARSE }} -q -y
 
       - name: Install pyOptSparse using build_pyoptsparse
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'build_pyoptsparse'
@@ -415,7 +410,7 @@ jobs:
           echo "============================================================="
           echo "Install additional packages for testing/coverage"
           echo "============================================================="
-          conda install graphviz
+          conda install graphviz -q -y
           python -m pip install pyparsing psutil objgraph pyxdsm pydot
 
           echo "Pre-install playwright dependencies to avoid 'Playwright Host validation warning'"
@@ -637,11 +632,6 @@ jobs:
           conda install numpy=${{ matrix.NUMPY }} scipy=${{ matrix.SCIPY }} -q -y
 
           python -m pip install --upgrade pip
-
-          echo "============================================================="
-          echo "Install mkl 2024.1.0 (test failure with 2024.2.2)"
-          echo "============================================================="
-          conda install mkl=2024.1.0
 
           echo "============================================================="
           echo "Install OpenMDAO"
