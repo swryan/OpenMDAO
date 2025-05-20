@@ -142,7 +142,7 @@ jobs:
             MPI4PY: '3.0'
             PETSc: '3.13'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
-            PYOPTSPARSE: 'v2.10.2'
+            PYOPTSPARSE: '2.10.2'
             SNOPT: '7.2'
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
@@ -362,7 +362,7 @@ jobs:
       - name: Install pyOptSparse from GitHub
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'github'
         run: |
-          pip install git+https://github.com/mdolab/pyoptsparse@${{ matrix.PYOPTSPARSE }}
+          pip install git+https://github.com/mdolab/pyoptsparse@v${{ matrix.PYOPTSPARSE }}
 
       - name: Install pyOptSparse from conda-forge
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'conda-forge'
@@ -386,7 +386,7 @@ jobs:
             }
             BRANCH="-b $(latest_version https://github.com/mdolab/pyoptsparse)"
           else
-            BRANCH="-b ${{ matrix.PYOPTSPARSE }}"
+            BRANCH="-b v${{ matrix.PYOPTSPARSE }}"
           fi
 
           if [[ "${{ matrix.PAROPT }}" ]]; then
