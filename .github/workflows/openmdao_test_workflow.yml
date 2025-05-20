@@ -90,11 +90,11 @@ jobs:
         include:
           # test baseline versions on Ubuntu
           - NAME: Ubuntu Baseline
-            OS: ubuntu-22.04
-            PY: '3'
-            NUMPY: '2'
-            SCIPY: '1'
-            PETSc: '3'
+            OS: ubuntu-24.04
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PETSc: '3.23'
             PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -106,14 +106,13 @@ jobs:
           # test baseline versions on MacOS
           - NAME: MacOS Baseline
             OS: macos-13
-            PY: '3'
-            NUMPY: '2'
-            SCIPY: '1'
-            PETSc: '3'
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PETSc: '3.23'
             PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
-            # PAROPT: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
@@ -127,7 +126,7 @@ jobs:
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Minimal }}
 
           # test newer versions on Ubuntu
-          - NAME: Ubuntu Newer
+          - NAME: Ubuntu ParOpt
             OS: ubuntu-24.04
             PY: '3.13'
             NUMPY: '2.2'
@@ -137,7 +136,7 @@ jobs:
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: 'v2.13.1'
             SNOPT: '7.7'
-            # PAROPT: true
+            PAROPT: true
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Newer }}
@@ -151,6 +150,7 @@ jobs:
             PETSc: '3.23'
             PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
+            SNOPT: '7.7'
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM }}
 
@@ -166,6 +166,7 @@ jobs:
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: 'v2.10.2'
             SNOPT: '7.2'
+            PAROPT: true
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
 
@@ -241,6 +242,7 @@ jobs:
           fi
 
       - name: Install compilers
+        if: matrix.PYOPTSPARSE
         run: |
           echo "============================================================="
           echo "Install compilers"
