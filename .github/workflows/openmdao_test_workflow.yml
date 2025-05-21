@@ -311,7 +311,7 @@ jobs:
             echo "-------------------------------------------------------------"
             echo "Installing additional build dependencies"
             echo "-------------------------------------------------------------"
-            conda install cmake meson openmp -q -y
+            conda install cmake meson openmp -y
 
             echo "-------------------------------------------------------------"
             echo "Building SNOPT"
@@ -523,15 +523,6 @@ jobs:
           cd $GITHUB_WORKSPACE
           python -m bandit -c bandit.yml -ll -r openmdao
 
-      - name: Check NumPy 2.0 Compatibility
-        run: |
-          echo "============================================================="
-          echo "Check OpenMDAO code for NumPy 2.0 compatibility"
-          echo "See: https://numpy.org/devdocs/numpy_2_0_migration_guide.html"
-          echo "============================================================="
-          python -m pip install ruff
-          ruff check . --select NPY201
-
       - name: Perform linting with Ruff
         if: ${{ matrix.NAME == 'Ubuntu Baseline' }}
         run: |
@@ -595,10 +586,10 @@ jobs:
         include:
           # baseline versions
           - NAME: Windows Baseline
-            PY: '3.12'
-            NUMPY: '1.26'
-            SCIPY: '1.13'
-            PYOPTSPARSE: '2.11.0'
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
+            PYOPTSPARSE: '2.13.1'
             BANDIT: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Windows_Baseline }}
 
