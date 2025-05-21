@@ -89,7 +89,7 @@ jobs:
             NUMPY: '2.2'
             SCIPY: '1.15'
             PETSc: '3.23'
-            PYOPTSPARSE_FROM: 'build_pyoptsparse'
+            PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
@@ -232,7 +232,7 @@ jobs:
               ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
             fi
           else
-            conda install cython swig compilers cmake meson openmp -q -y
+            conda install compilers cython swig -q -y
           fi
 
           if [[ "${{ matrix.XCODE }}" ]]; then
@@ -308,6 +308,11 @@ jobs:
           fi
 
           if [ -d "SNOPT" ] ; then
+            echo "-------------------------------------------------------------"
+            echo "Installing additional build dependencies"
+            echo "-------------------------------------------------------------"
+            conda install cmake meson openmp -q -y
+
             echo "-------------------------------------------------------------"
             echo "Building SNOPT"
             echo "-------------------------------------------------------------"
