@@ -89,7 +89,7 @@ jobs:
             NUMPY: '2.2'
             SCIPY: '1.15'
             PETSc: '3.23'
-            PYOPTSPARSE_FROM: 'conda-forge'
+            PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
             OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
@@ -114,6 +114,7 @@ jobs:
           - NAME: MacOS ARM Baseline
             OS: macos-14
             PY: '3.13'
+            BREW: true
             NUMPY: '2.2'
             SCIPY: '1.15'
             PETSc: '3'
@@ -245,7 +246,9 @@ jobs:
           echo "Install PETSc"
           echo "============================================================="
 
-          if [[ "${{ matrix.MPICH }}" ]]; then
+          if [[ "${{ matrix.BREW }}" ]]; then
+            brew install open-mpi mpi4py
+          elif [[ "${{ matrix.MPICH }}" ]]; then
             conda install mpich-mpicc=${{ matrix.MPICH }} -q -y
           elif [[ "${{ matrix.OPENMPI }}" ]]; then
             conda install openmpi-mpicc=${{ matrix.OPENMPI }} -q -y
