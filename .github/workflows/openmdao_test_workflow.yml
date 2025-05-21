@@ -219,26 +219,6 @@ jobs:
             python -m pip install .${{ matrix.OPTIONAL }}
           fi
 
-      - name: Install compilers
-        if: matrix.PYOPTSPARSE
-        run: |
-          echo "============================================================="
-          echo "Install compilers"
-          echo "============================================================="
-
-          if [[ "${{ matrix.BREW }}" ]]; then
-            brew install swig meson
-            if [[ "${{ matrix.OS }}" == "macos-14" ]]; then
-              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
-            fi
-          else
-            conda install compilers cython swig -q -y
-          fi
-
-          if [[ "${{ matrix.XCODE }}" ]]; then
-            sudo xcode-select -s "/Applications/Xcode_${{ matrix.XCODE }}.app"
-          fi
-
       - name: Install PETSc
         if: matrix.PETSc
         run: |
@@ -290,6 +270,26 @@ jobs:
 
           echo "Workaround for intermittent failures with OMPI https://github.com/open-mpi/ompi/issues/7393"
           echo "TMPDIR=/tmp" >> $GITHUB_ENV
+
+      - name: Install compilers
+        if: matrix.PYOPTSPARSE
+        run: |
+          echo "============================================================="
+          echo "Install compilers"
+          echo "============================================================="
+
+          if [[ "${{ matrix.BREW }}" ]]; then
+            brew install swig meson
+            if [[ "${{ matrix.OS }}" == "macos-14" ]]; then
+              ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
+            fi
+          else
+            conda install compilers cython swig -q -y
+          fi
+
+          if [[ "${{ matrix.XCODE }}" ]]; then
+            sudo xcode-select -s "/Applications/Xcode_${{ matrix.XCODE }}.app"
+          fi
 
       - name: Build SNOPT
         if: matrix.PYOPTSPARSE_FROM != 'build_pyoptsparse' && matrix.SNOPT
