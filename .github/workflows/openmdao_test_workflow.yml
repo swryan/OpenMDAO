@@ -88,7 +88,7 @@ jobs:
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.15'
-            PETSc: '3'
+            PETSc: '3.20'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
