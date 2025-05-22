@@ -355,11 +355,13 @@ jobs:
       - name: Install pyOptSparse from GitHub
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'github'
         run: |
+          echo "Installing pyOptSparse from GitHub, IPOPT will not be available"
           pip install git+https://github.com/mdolab/pyoptsparse@v${{ matrix.PYOPTSPARSE }}
 
       - name: Install pyOptSparse from conda-forge
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'conda-forge'
         run: |
+          echo "Installing pyOptSparse from conda-forge, IPOPT will be available"
           conda install -c conda-forge pyoptsparse=${{ matrix.PYOPTSPARSE }} -q -y
 
       - name: Install pyOptSparse using build_pyoptsparse
