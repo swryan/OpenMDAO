@@ -88,7 +88,8 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.23.1'
+            PETSc: '3.21.5'
+            OPENMPI: '4.0'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -103,7 +104,8 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.23.1'
+            PETSc: '3.21.5'
+            OPENMPI: '4.0'
             PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -117,7 +119,8 @@ jobs:
             BREW: true
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.23.1'
+            PETSc: '3.21.5'
+            OPENMPI: '4.0'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -236,7 +239,6 @@ jobs:
           if [[ "${{ matrix.XCODE }}" ]]; then
             sudo xcode-select -s "/Applications/Xcode_${{ matrix.XCODE }}.app"
           fi
-
 
       - name: Install PETSc
         if: matrix.PETSc
