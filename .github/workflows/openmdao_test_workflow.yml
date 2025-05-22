@@ -85,11 +85,10 @@ jobs:
           # test baseline versions on Ubuntu
           - NAME: Ubuntu Baseline
             OS: ubuntu-24.04
-            PY: '3.13'
-            NUMPY: '2.2'
+            PY: '3.12'
+            NUMPY: '1.26'
             SCIPY: '1.15'
-            PETSc: '3.21.5'
-            OPENMPI: '5.0'
+            PETSc: '3'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -375,7 +374,7 @@ jobs:
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'build_pyoptsparse'
         continue-on-error: false
         run: |
-          conda install cython swig compilers cmake meson openmp liblapack -q -y
+          conda install -c conda-forge swig -q -y
 
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
