@@ -85,10 +85,10 @@ jobs:
           # test baseline versions on Ubuntu
           - NAME: Ubuntu Baseline
             OS: ubuntu-24.04
-            PY: '3.12'
-            NUMPY: '1.26'
+            PY: '3.13'
+            NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3.20'
+            PETSc: '3.23'
             PYOPTSPARSE_FROM: 'github'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -344,11 +344,6 @@ jobs:
             export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:/lib/x86_64-linux-gnu/:$LD_LIBRARY_PATH
             echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH" >> $GITHUB_ENV
             echo "LD_LIBRARY_PATH=$LD_LIBRARY_PATH"
-            if [[ "${{ matrix.OS }}" == "ubuntu"* ]]; then
-              ldconfig -p | grep omp
-              nm -gD /lib/x86_64-linux-gnu/libgomp.so.1
-              nm -gD /lib/x86_64-linux-gnu/libgomp.so.1 | grep GOMP_parallel
-            fi
             python -c "import snopt; print(snopt)"
 
             echo "-------------------------------------------------------------"
