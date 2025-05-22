@@ -375,7 +375,7 @@ jobs:
         if: matrix.PYOPTSPARSE && matrix.PYOPTSPARSE_FROM == 'build_pyoptsparse'
         continue-on-error: false
         run: |
-          conda install -c conda-forge swig liblapack -q -y
+          conda install -c conda-forge swig lapack -q -y
 
           python -m pip install git+https://github.com/OpenMDAO/build_pyoptsparse
 
