@@ -88,7 +88,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3'
+            PETSc: '3.23.1'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -103,7 +103,7 @@ jobs:
             PY: '3.13'
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3'
+            PETSc: '3.23.1'
             PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -117,7 +117,7 @@ jobs:
             BREW: true
             NUMPY: '2.2'
             SCIPY: '1.15'
-            PETSc: '3'
+            PETSc: '3.23.1'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
@@ -127,9 +127,9 @@ jobs:
           # test minimal install
           - NAME: Ubuntu Minimal
             OS: ubuntu-24.04
-            PY: '3.12'
-            NUMPY: '1.26'
-            SCIPY: '1.14'
+            PY: '3.13'
+            NUMPY: '2.2'
+            SCIPY: '1.15'
             OPTIONAL: '[test]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Minimal }}
 
@@ -588,7 +588,7 @@ jobs:
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.13'
-            PYOPTSPARSE: '2.11.0'
+            PYOPTSPARSE: '2.13.1'
             BANDIT: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Windows_Baseline }}
 
