@@ -85,14 +85,14 @@ jobs:
           # test baseline versions on Ubuntu
           - NAME: Ubuntu Baseline
             OS: ubuntu-24.04
-            PY: '3.13'
-            NUMPY: '2.2'
+            PY: '3.12'
+            NUMPY: '1.26'
             SCIPY: '1.15'
-            PETSc: '3.23'
+            PETSc: '3.20'
             PYOPTSPARSE_FROM: 'github'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
-            OPTIONAL: '[docs,doe,jax,notebooks,numba,test,visualization]'
+            OPTIONAL: '[all,numba]'
             BANDIT: true
             PEP517: true
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Baseline }}
@@ -107,7 +107,7 @@ jobs:
             PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
-            OPTIONAL: '[docs,doe,jax,notebooks,numba,test]'
+            OPTIONAL: '[all,numba]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
           # test baseline versions on MacOS/ARM
@@ -406,7 +406,7 @@ jobs:
           build_pyoptsparse -v $BRANCH $PAROPT $SNOPT
 
       - name: Install optional dependencies
-        if: matrix.OPTIONAL == '[all]'
+        if: matrix.OPTIONAL == '[all]' || matrix.OPTIONAL == '[all,numba]'
         run: |
           echo "============================================================="
           echo "Install additional packages for testing/coverage"
