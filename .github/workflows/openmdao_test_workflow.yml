@@ -112,7 +112,7 @@ jobs:
 
           # test baseline versions on MacOS/ARM
           - NAME: MacOS ARM Baseline
-            OS: macos-14
+            OS: macos-15
             PY: '3.13'
             BREW: true
             NUMPY: '2.2'
@@ -227,7 +227,7 @@ jobs:
           echo "============================================================="
           if [[ "${{ matrix.BREW }}" ]]; then
             brew install swig meson
-            if [[ "${{ matrix.OS }}" == "macos-14" ]]; then
+            if [[ "${{ matrix.OS }}" == "macos-15" ]]; then
               ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
             fi
           else
