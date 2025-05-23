@@ -142,7 +142,7 @@ jobs:
             OPENMPI: '4.0'
             MPI4PY: '3.0'
             PETSc: '3'
-            PYOPTSPARSE_FROM: 'build_pyoptsparse'
+            PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.10.2'
             SNOPT: '7.7'
             OPTIONAL: '[all]'
