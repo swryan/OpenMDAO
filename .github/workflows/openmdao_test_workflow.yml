@@ -136,14 +136,14 @@ jobs:
           # test oldest supported versions
           - NAME: Ubuntu Oldest
             OS: ubuntu-22.04
-            PY: '3.9'
+            PY: '3.10'
             NUMPY: '1.24'
             SCIPY: '1.12'
             OPENMPI: '4.0'
             MPI4PY: '3.0'
             PETSc: '3.13'
             PYOPTSPARSE_FROM: 'conda-forge'
-            PYOPTSPARSE: '2.10.2'
+            PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
