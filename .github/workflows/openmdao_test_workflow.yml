@@ -141,7 +141,7 @@ jobs:
             SCIPY: '1.12'
             OPENMPI: '4.0'
             MPI4PY: '3.0'
-            PETSc: '3.13'
+            PETSc: '3.20'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.10.2'
             SNOPT: '7.7'
