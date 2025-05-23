@@ -144,7 +144,7 @@ jobs:
             PETSc: '3.13'
             PYOPTSPARSE_FROM: 'build_pyoptsparse'
             PYOPTSPARSE: '2.10.2'
-            SNOPT: '7.2'
+            SNOPT: '7.7'
             OPTIONAL: '[all]'
             EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.Ubuntu_Oldest }}
 
