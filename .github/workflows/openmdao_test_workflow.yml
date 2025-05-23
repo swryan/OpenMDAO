@@ -397,6 +397,7 @@ jobs:
             echo "  > Secure copying SNOPT 7.2 over SSH"
             mkdir SNOPT
             scp -qr ${{ secrets.SNOPT_LOCATION_72 }} SNOPT
+            ls -lR SNOPT
             SNOPT="-s SNOPT/source"
           elif [[ "${{ matrix.SNOPT }}" ]]; then
             echo "SNOPT version ${{ matrix.SNOPT }} was requested but source is not available"
