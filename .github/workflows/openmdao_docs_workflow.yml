@@ -32,14 +32,14 @@ jobs:
 
           # build docs (baseline versions)
           - NAME: Build Docs
-            OS: ubuntu-24.04
-            PY: '3.12'
+            OS: ubuntu-latest
+            PY: '3.11'
             NUMPY: '1.26'
-            SCIPY: '1.15'
-            PETSc: '3.20'
-            PYOPTSPARSE: 'v2.13.1'
+            SCIPY: '1.13'
+            PETSc: '3.19'
+            PYOPTSPARSE: 'v2.13.0'
             SNOPT: '7.7'
-            OPTIONAL: '[all,numba]'
+            OPTIONAL: '[all]'
             PUBLISH: true
 
     runs-on: ${{ matrix.OS }}
