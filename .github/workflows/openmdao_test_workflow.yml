@@ -224,7 +224,7 @@ jobs:
           echo "Install compilers"
           echo "============================================================="
           if [[ "${{ matrix.BREW }}" ]]; then
-            brew install swig meson
+            brew install gcc gfortran meson swig
             if [[ "${{ matrix.OS }}" == "macos-15" ]]; then
               ln -s /opt/homebrew/bin/gfortran-13 /opt/homebrew/bin/gfortran
             fi
@@ -243,7 +243,7 @@ jobs:
           echo "============================================================="
 
           if [[ "${{ matrix.BREW }}" ]]; then
-            brew install open-mpi mpi4py
+            brew install open-mpi
           elif [[ "${{ matrix.MPICH }}" ]]; then
             conda install mpich-mpicc=${{ matrix.MPICH }} -q -y
           elif [[ "${{ matrix.OPENMPI }}" ]]; then
@@ -253,8 +253,7 @@ jobs:
           fi
 
           if [[ "${{ matrix.PETSc }}" == "3" ]]; then
-            python -m pip install git+https://github.com/mpi4py/mpi4py
-            python -m pip install petsc petsc4py
+            python -m pip install mpi4py petsc petsc4py
           else
             if [[ "${{ matrix.MPI4PY }}" ]]; then
               conda install mpi4py=${{ matrix.MPI4PY }} petsc4py=${{ matrix.PETSc }} -q -y
