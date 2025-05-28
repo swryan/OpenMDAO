@@ -398,8 +398,7 @@ jobs:
           echo "============================================================="
           echo "Install additional packages for testing/coverage"
           echo "============================================================="
-          conda install graphviz -q -y
-          python -m pip install pyparsing psutil objgraph pyxdsm pydot
+          python -m pip install pyparsing psutil objgraph pyxdsm pydot graphviz
 
           echo "Pre-install playwright dependencies to avoid 'Playwright Host validation warning'"
           playwright install --with-deps
