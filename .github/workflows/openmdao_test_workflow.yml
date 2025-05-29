@@ -222,7 +222,7 @@ jobs:
           echo "============================================================="
           echo "Install compilers"
           echo "============================================================="
-        conda install cython swig compilers cmake meson -q -y
+          conda install cython swig compilers cmake meson -q -y
 
       - name: Install PETSc
         if: matrix.PETSc
