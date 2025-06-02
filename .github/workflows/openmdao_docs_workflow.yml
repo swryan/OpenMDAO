@@ -32,11 +32,11 @@ jobs:
 
           # build docs (baseline versions)
           - NAME: Build Docs
-            OS: ubuntu-latest
+            OS: ubuntu-24.04
             PY: '3.12'
             NUMPY: '1.26'
             SCIPY: '1.15'
-            PETSc: '3.21'
+            PETSc: '3.20'
             PYOPTSPARSE: 'v2.13.1'
             SNOPT: '7.7'
             OPTIONAL: '[all]'
