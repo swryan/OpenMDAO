@@ -222,7 +222,11 @@ jobs:
           echo "============================================================="
           echo "Install compilers"
           echo "============================================================="
-          conda install cython swig compilers cmake meson -q -y
+          if [[  "${{ matrix.OS }}" != "macos-15" ]]; then
+            conda install cython swig compilers cmake meson openmp -q -y
+          else
+            conda install cython swig compilers cmake meson -q -y
+          fi
 
       - name: Install PETSc
         if: matrix.PETSc
@@ -290,17 +294,12 @@ jobs:
 
           if [ -d "SNOPT" ] ; then
             echo "-------------------------------------------------------------"
-            echo "Installing additional build dependencies"
-            echo "-------------------------------------------------------------"
-            conda install cmake meson openmp -q -y
-
-            echo "-------------------------------------------------------------"
             echo "Building SNOPT"
             echo "-------------------------------------------------------------"
             cd SNOPT
             ./configure
             make
-            echo make check
+            make check
 
             echo "-------------------------------------------------------------"
             echo "Building Python bindings"
