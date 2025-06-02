@@ -232,9 +232,10 @@ jobs:
         run: |
           if [[ "${#DOCS_LOCATION}" ]]; then
             echo "============================================================="
-            echo "Install version of openssl compatible with hosting service"
+            echo "Create env with openssl compatible with hosting service"
             echo "============================================================="
-            conda install -c conda-forge 'openssl=3.0'
+            conda create -n upload python=3.11 packaging openssl=3
+            conda activate upload
 
             echo "============================================================="
             echo "Fetch tags to get docs version"
