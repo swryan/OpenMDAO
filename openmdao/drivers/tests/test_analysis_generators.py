@@ -48,7 +48,7 @@ class TestErrors(unittest.TestCase):
     @unittest.skipIf(pyDOE3, "only runs if 'pyDOE3' is not installed")
     def test_no_pyDOE3(self):
         with self.assertRaises(RuntimeError) as err:
-            om.FullFactorialGenerator(levels=3)
+            om.FullFactorialGenerator(var_dict={}, levels=3)
 
         self.assertEqual(str(err.exception),
                          "FullFactorialGenerator requires the 'pyDOE3' package, "
