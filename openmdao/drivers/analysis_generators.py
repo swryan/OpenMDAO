@@ -199,19 +199,23 @@ class _pyDOE3_Generator(AnalysisGenerator):
         for name, meta in factors.items():
             size = _get_size(name, meta)
 
-            for k in range(size):
-                lower = meta['lower']
-                if isinstance(lower, np.ndarray):
-                    lower = lower[k]
+            try:
+                for k in range(size):
+                    lower = meta['lower']
+                    if isinstance(lower, np.ndarray):
+                        lower = lower[k]
 
-                upper = meta['upper']
-                if isinstance(upper, np.ndarray):
-                    upper = upper[k]
+                    upper = meta['upper']
+                    if isinstance(upper, np.ndarray):
+                        upper = upper[k]
 
-                levels = self._get_levels(name)
-                values[row, 0:levels] = np.linspace(lower, upper, num=levels)
+                    levels = self._get_levels(name)
+                    values[row, 0:levels] = np.linspace(lower, upper, num=levels)
 
-                row += 1
+                    row += 1
+            except KeyError:
+                raise RuntimeError(f"Unable to determine levels for factor '{name}'. "
+                                   "Factors dictionary must contain both 'lower' and 'upper' keys.")
 
         # construct iterator for doe values
         retvals = []
@@ -532,7 +536,7 @@ def _get_size(name, dct):
     ----------
     dct : dict
         Dictionary containing metadata for the variable, which may include
-        'size', 'global_size' and 'distributed', 'val', 'upper', and 'lower' keys.
+        'size', 'global_size', 'val', 'upper', and 'lower' keys.
 
     Returns
     -------

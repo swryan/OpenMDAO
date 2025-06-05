@@ -75,6 +75,18 @@ class TestErrors(unittest.TestCase):
                          "Must be one of ['center', 'c', 'maximin', 'm', 'centermaximin', "
                          "'cm', 'correlation', 'corr', None].")
 
+    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
+    def test_missing_bounds(self):
+        with self.assertRaises(RuntimeError) as err:
+            factors = {
+                'x': {'upper': 1.0},
+            }
+            FullFactorialGenerator(factors, levels=3)
+
+        self.assertEqual(str(err.exception),
+                         "Unable to determine levels for factor 'x'. Factors dictionary must "
+                         "contain both 'lower' and 'upper' keys.")
+
 
 @use_tempdirs
 class TestAnalysisGenerators(unittest.TestCase):
