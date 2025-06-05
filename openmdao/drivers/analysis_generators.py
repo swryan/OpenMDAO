@@ -27,13 +27,6 @@ class UniformGenerator(AnalysisGenerator):
         The number of samples to run. Defaults to 1.
     seed : int or None, optional
         Seed for random number generator.
-
-    Attributes
-    ----------
-    _num_samples : int
-        The number of samples in the DOE.
-    _seed : int or None
-        Random seed.
     """
 
     def __init__(self, var_dict, num_samples=1, seed=None):
@@ -109,7 +102,8 @@ class _pyDOE3_Generator(AnalysisGenerator):
     var_dict : dict
         A dictionary whose keys are promoted paths of variables to be set, and whose
         values are the arguments to `set_val` and may include additional metadata such
-        as size, global_size, val, lower, and upper.
+        as size, global_size, val, lower, and upper.  Both 'lower' and 'upper' keys
+        are required to define the range of each factor.
     levels : int or dict, optional
         The number of evenly spaced levels between each factor
         lower and upper bound.  Dictionary input is supported by Full Factorial or
@@ -258,6 +252,11 @@ class FullFactorialGenerator(_pyDOE3_Generator):
 
     Parameters
     ----------
+    var_dict : dict
+        A dictionary whose keys are promoted paths of variables to be set, and whose
+        values are the arguments to `set_val` and may include additional metadata such
+        as size, global_size, val, lower, and upper.  Both 'lower' and 'upper' keys
+        are required to define the range of each factor.
     levels : int or dict, optional
         The number of evenly spaced levels between each factor
         lower and upper bound.  Dictionary input is supported by Full Factorial or
@@ -288,6 +287,11 @@ class GeneralizedSubsetGenerator(_pyDOE3_Generator):
 
     Parameters
     ----------
+    var_dict : dict
+        A dictionary whose keys are promoted paths of variables to be set, and whose
+        values are the arguments to `set_val` and may include additional metadata such
+        as size, global_size, val, lower, and upper.  Both 'lower' and 'upper' keys
+        are required to define the range of each factor.
     levels : int or dict
         The number of evenly spaced levels between each factor
         lower and upper bound. Defaults to 2.
@@ -340,6 +344,14 @@ class GeneralizedSubsetGenerator(_pyDOE3_Generator):
 class PlackettBurmanGenerator(_pyDOE3_Generator):
     """
     DOE case generator implementing the Plackett-Burman method.
+
+    Parameters
+    ----------
+    var_dict : dict
+        A dictionary whose keys are promoted paths of variables to be set, and whose
+        values are the arguments to `set_val` and may include additional metadata such
+        as size, global_size, val, lower, and upper.  Both 'lower' and 'upper' keys
+        are required to define the range of each factor.
     """
 
     def __init__(self, var_dict):
@@ -534,6 +546,8 @@ def _get_size(name, dct):
 
     Parameters
     ----------
+    name : str
+        The name of the variable for which to determine the size.
     dct : dict
         Dictionary containing metadata for the variable, which may include
         'size', 'global_size', 'val', 'upper', and 'lower' keys.
@@ -543,6 +557,7 @@ def _get_size(name, dct):
     int
         The size of the variable. If 'distributed' is True, returns 'global_size',
         otherwise returns the value of 'size' or the size of 'val', 'lower', or 'upper'.
+
     Raises
     ------
     RuntimeError
