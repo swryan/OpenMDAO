@@ -27,38 +27,46 @@ class UniformGenerator(AnalysisGenerator):
         The number of samples to run. Defaults to 1.
     seed : int or None, optional
         Seed for random number generator.
+
+    Attributes
+    ----------
+    _num_samples : int
+        The number of samples in the DOE.
+    _seed : int or None
+        Random seed.
+    _sizes : dict
+        A dictionary mapping variable names to their sizes, determined from the 'lower' and 'upper'
+        bounds in the var_dict.
     """
 
     def __init__(self, var_dict, num_samples=1, seed=None):
         """
         Initialize the UniformGenerator.
         """
-        if seed is not None:
-            np.random.seed(seed)
+        self._num_samples = num_samples
+        self._seed = seed
+        self._sizes = sizes = {}
 
-        samples = {}
+        for name, meta in var_dict.items():
+            sizes[name] = _get_size(name, meta)
 
-        for _ in range(num_samples):
-            for name, meta in var_dict.items():
-                try:
-                    lower = meta['lower']
-                except KeyError:
-                    raise RuntimeError("UniformGenerator requires 'lower' and 'upper' values for "
-                                       "each sample variable, but the 'lower' value is missing "
-                                       f"for '{name}'.")
+        super().__init__(var_dict)
 
-                try:
-                    upper = meta['upper']
-                except KeyError:
-                    raise RuntimeError("UniformGenerator requires 'lower' and 'upper' values for "
-                                       "each sample variable, but the 'upper' value is missing "
-                                       f"for '{name}'.")
+    def _setup(self):
+        """
+        Set up the iterator which provides each case.
 
-                samples[name] = {'vals': np.random.uniform(lower, upper, num_samples),
-                                 'units': meta.get('units'),
-                                 'indices': meta.get('indices')}
+        Raises
+        ------
+        ValueError
+            Raised if the length of var_dict for each case are not all the same size.
+        """
+        if self._seed is not None:
+            np.random.seed(self._seed)
 
-        super().__init__(samples)
+        self._iter = iter(range(self._num_samples))
+
+        super()._setup()
 
     def __next__(self):
         """
@@ -79,18 +87,19 @@ class UniformGenerator(AnalysisGenerator):
             A dictionary containing the promoted paths of variables to
             be set by the AnalysisDriver
         """
-        i = self._run_count
+        next(self._iter)
+
+        sizes = self._sizes
+
         d = {}
-        try:
-            for name in self._var_dict:
-                d[name] = {'val': self._var_dict[name]['vals'][i],
-                           'units': self._var_dict[name].get('units', None),
-                           'indices': self._var_dict[name].get('indices', None)}
-            self._run_count += 1
-            return d
-        except IndexError:
-            self._run_count = 0
-            raise StopIteration("All samples have been exhausted for UniformGenerator.")
+        for name, meta in self._var_dict.items():
+            d[name] = {
+                'val': np.random.uniform(meta['lower'], meta['upper'], sizes[name]),
+                'units': meta.get('units', None),
+                'indices': meta.get('indices', None)
+            }
+        self._run_count += 1
+        return d
 
 
 class _pyDOE3_Generator(AnalysisGenerator):

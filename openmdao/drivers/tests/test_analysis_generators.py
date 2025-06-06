@@ -155,11 +155,11 @@ class TestAnalysisGenerators(unittest.TestCase):
 
         # all values should be between -10 and 10, check expected values for seed = 0
         expected = [
-            {'x': np.array([-2.80984199]), 'y': np.array([3.41275739])},
-            {'x': np.array([-1.25936092]), 'y': np.array([-5.79234878])},
-            {'x': np.array([3.95262392]),  'y': np.array([-7.42147405])},
-            {'x': np.array([-8.79549057]), 'y': np.array([-3.69143298])},
-            {'x': np.array([3.33533431]),  'y': np.array([-2.72578458])}
+            {'x': np.array([0.97627008]), 'y': np.array([4.30378733])},
+            {'x': np.array([2.05526752]), 'y': np.array([0.89766366])},
+            {'x': np.array([-1.52690401]), 'y': np.array([2.91788226])},
+            {'x': np.array([-1.24825577]), 'y': np.array([7.83546002])},
+            {'x': np.array([9.27325521]), 'y': np.array([-2.33116962])},
         ]
 
         cr = om.CaseReader(prob.get_outputs_dir() / "cases.sql")
