@@ -138,7 +138,11 @@ class _pyDOE3_Generator(AnalysisGenerator):
                                "    pip install pyDOE3")
 
         self._levels = levels
-        self._sizes = None
+        self._sizes = sizes = {}
+
+        for name, meta in var_dict.items():
+            sizes[name] = _get_size(name, meta)
+
         super().__init__(var_dict)
 
     def _get_levels(self, name):
@@ -200,7 +204,7 @@ class _pyDOE3_Generator(AnalysisGenerator):
 
         row = 0
         for name, meta in factors.items():
-            size = _get_size(name, meta)
+            size = self._sizes(name)
 
             try:
                 for k in range(size):
@@ -340,7 +344,7 @@ class GeneralizedSubsetGenerator(_pyDOE3_Generator):
         Parameters
         ----------
         size : int
-            The number of factors for the design.
+            The total size (sum of sizes) of all factors for the design.
 
         Returns
         -------
@@ -376,7 +380,7 @@ class PlackettBurmanGenerator(_pyDOE3_Generator):
         Parameters
         ----------
         size : int
-            The number of factors for the design.
+            The total size (sum of sizes) of all factors for the design.
 
         Returns
         -------
