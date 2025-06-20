@@ -76,7 +76,7 @@ jobs:
 
   tests:
 
-    timeout-minutes: 120
+    timeout-minutes: 150
 
     strategy:
       fail-fast: false
@@ -228,6 +228,13 @@ jobs:
             conda install cython swig compilers cmake meson -q -y
           fi
 
+      - name: Restore PETSc wheels
+        if: matrix.PETSc && matrix.OS == 'macos-13'
+        uses: actions/download-artifact@v3
+        with:
+          name: petsc-wheels
+          path: /Users/runner/Library/Caches/pip/wheels
+
       - name: Install PETSc
         if: matrix.PETSc
         run: |
@@ -275,6 +282,13 @@ jobs:
 
           echo "Workaround for intermittent failures with OMPI https://github.com/open-mpi/ompi/issues/7393"
           echo "TMPDIR=/tmp" >> $GITHUB_ENV
+
+      - name: Save PETSc wheels
+        if: matrix.PETSc && matrix.OS == 'macos-13'
+        uses: actions/upload-artifact@v3
+        with:
+          name: petsc-wheels
+          path: /Users/runner/Library/Caches/pip/wheels
 
       - name: Build SNOPT
         if: matrix.PYOPTSPARSE_FROM != 'build_pyoptsparse' && matrix.SNOPT
