@@ -76,7 +76,7 @@ jobs:
 
   tests:
 
-    timeout-minutes: 120
+    timeout-minutes: 150
 
     strategy:
       fail-fast: false
@@ -462,7 +462,7 @@ jobs:
           echo "###################################################"
           cp .coveragerc $HOME
           cd $HOME
-          testflo -n 2 openmdao --timeout=240 --show_skipped --coverage --coverpkg openmdao --durations=20
+          testflo --pre_announce openmdao --timeout=240 --show_skipped --coverage --coverpkg openmdao --durations=20
 
       - name: Submit coverage
         id: coveralls
