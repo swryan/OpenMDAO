@@ -234,6 +234,7 @@ jobs:
         with:
           name: ${{ matrix.os }}-petsc-wheels
           path: /Users/runner/Library/Caches/pip/wheels
+          if-no-files-found: ignore
 
       - name: Install PETSc
         if: matrix.PETSc
