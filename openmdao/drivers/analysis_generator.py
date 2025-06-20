@@ -46,16 +46,20 @@ class AnalysisGenerator(Iterator):
         self._var_dict = var_dict
         self._iter = None
 
+        print("AnalysisGenerator initialized with var_dict:", self._var_dict)
         self._setup()
+        print("AnalysisGenerator caLLED _SETUP():")
 
-    def _setup(self):
-        """
-        Reset the run counter and instantiate the internal Iterator.
+    # def _setup(self):
+    #     """
+    #     Reset the run counter and instantiate the internal Iterator.
 
-        Subclasses of AnalysisGenerator should override this method
-        to define self._iter.
-        """
-        self._run_count = 0
+    #     Subclasses of AnalysisGenerator should override this method
+    #     to define self._iter.
+    #     """
+    #     print("AnalysisGenerator._SETUP()")
+    #     self._run_count = 0
+    #     print("AnalysisGenerator._SETUP() called, run_count reset to 0")
 
     def _get_sampled_vars(self):
         """

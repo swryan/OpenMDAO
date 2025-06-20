@@ -677,6 +677,9 @@ class LatinHypercubeGenerator(DOEGenerator):
                          iterations=self._iterations,
                          random_state=self._seed)
 
+        from pprint import pprint
+        pprint(doe)
+
         # yield desvar values for doe samples
         for row in doe:
             retval = []

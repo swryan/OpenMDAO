@@ -14,8 +14,11 @@ from openmdao.test_suite.components.paraboloid import Paraboloid
 from openmdao.utils.assert_utils import assert_near_equal
 from openmdao.utils.testing_utils import use_tempdirs
 
-from openmdao.drivers.analysis_generators import UniformGenerator, FullFactorialGenerator, \
-    GeneralizedSubsetGenerator, PlackettBurmanGenerator, BoxBehnkenGenerator, LatinHypercubeGenerator
+from openmdao.drivers.sampling.uniform_generator import UniformGenerator
+from openmdao.drivers.sampling.pyDOE_generators import FullFactorialGenerator, \
+    GeneralizedSubsetGenerator, PlackettBurmanGenerator, BoxBehnkenGenerator, \
+    LatinHypercubeGenerator, LHSGenerator
+
 
 try:
     import pyDOE3
@@ -624,7 +627,7 @@ class TestAnalysisGenerators(unittest.TestCase):
             'y': {'lower': ylb, 'upper': yub}
         }
 
-        prob.driver = om.AnalysisDriver(LatinHypercubeGenerator(factors, samples=4, seed=0))
+        prob.driver = om.AnalysisDriver(LHSGenerator(factors, samples=4, seed=0))
         prob.driver.add_response('f_xy')
 
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
@@ -810,3 +813,5 @@ class TestAnalysisGenerators(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+    # testcase = TestAnalysisGenerators()
+    # testcase.test_latin_hypercube()
