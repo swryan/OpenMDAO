@@ -230,9 +230,9 @@ jobs:
 
       - name: Restore PETSc wheels
         if: matrix.PETSc && matrix.OS == 'macos-13'
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
-          name: petsc-wheels
+          name: ${{ matrix.os }}-petsc-wheels
           path: /Users/runner/Library/Caches/pip/wheels
 
       - name: Install PETSc
@@ -285,10 +285,11 @@ jobs:
 
       - name: Save PETSc wheels
         if: matrix.PETSc && matrix.OS == 'macos-13'
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: petsc-wheels
+          name: ${{ matrix.os }}-petsc-wheels
           path: /Users/runner/Library/Caches/pip/wheels
+          overwrite: true
 
       - name: Build SNOPT
         if: matrix.PYOPTSPARSE_FROM != 'build_pyoptsparse' && matrix.SNOPT
