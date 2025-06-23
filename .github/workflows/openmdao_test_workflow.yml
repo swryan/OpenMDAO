@@ -31,12 +31,6 @@ on:
         required: false
         default: true
 
-      MacOS_ARM_Baseline:
-        type: boolean
-        description: 'Include MacOS ARM Baseline in test matrix'
-        required: false
-        default: true
-
       Windows_Baseline:
         type: boolean
         description: 'Include Windows Baseline in test matrix'
@@ -89,7 +83,7 @@ jobs:
             NUMPY: '1.26'
             SCIPY: '1.15'
             PETSc: '3.20'
-            PYOPTSPARSE_FROM: 'build_pyoptsparse'
+            PYOPTSPARSE_FROM: 'conda-forge'
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
             OPTIONAL: '[all,numba]'
@@ -99,19 +93,6 @@ jobs:
 
           # test baseline versions on MacOS
           - NAME: MacOS Baseline
-            OS: macos-13
-            PY: '3.13'
-            NUMPY: '2.2'
-            SCIPY: '1.15'
-            PETSc: '3'
-            PYOPTSPARSE_FROM: 'conda-forge'
-            PYOPTSPARSE: '2.13.1'
-            SNOPT: '7.7'
-            OPTIONAL: '[all,numba]'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
-
-          # test baseline versions on MacOS/ARM
-          - NAME: MacOS ARM Baseline
             OS: macos-15
             PY: '3.13'
             NUMPY: '2.2'
