@@ -102,7 +102,7 @@ jobs:
             PYOPTSPARSE: '2.13.1'
             SNOPT: '7.7'
             OPTIONAL: '[all]'
-            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_ARM_Baseline }}
+            EXCLUDE: ${{ github.event_name == 'workflow_dispatch'  && ! inputs.MacOS_Baseline }}
 
           # test minimal install
           - NAME: Ubuntu Minimal
