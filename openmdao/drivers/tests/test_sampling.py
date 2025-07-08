@@ -17,7 +17,7 @@ from openmdao.utils.testing_utils import use_tempdirs
 from openmdao.drivers.sampling.uniform_generator import UniformGenerator
 from openmdao.drivers.sampling.pyDOE_generators import FullFactorialGenerator, \
     GeneralizedSubsetGenerator, PlackettBurmanGenerator, BoxBehnkenGenerator, \
-    LatinHypercubeGenerator, LHSGenerator
+    LatinHypercubeGenerator
 
 
 try:
@@ -46,7 +46,51 @@ class ParaboloidArray(om.ExplicitComponent):
         outputs['f_xy'] = (x - 3.0)**2 + x * y + (y + 4.0)**2 - 3.0
 
 
-class TestErrors(unittest.TestCase):
+@use_tempdirs
+class TestUniformGenerator(unittest.TestCase):
+
+    def test_uniform(self):
+        prob = om.Problem()
+        model = prob.model
+
+        model.add_subsystem('comp', Paraboloid(), promotes=['*'])
+        model.set_input_defaults('x', 0.0)
+        model.set_input_defaults('y', 0.0)
+
+        factors = {
+            'x': {'lower': -10, 'upper': 10},
+            'y': {'lower': -10, 'upper': 10},
+        }
+
+        prob.driver = om.AnalysisDriver(UniformGenerator(factors, num_samples=5, seed=0))
+        prob.driver.add_response('f_xy')
+        prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
+
+        prob.setup()
+        prob.run_driver()
+        prob.cleanup()
+
+        # all values should be between -10 and 10, check expected values for seed = 0
+        expected = [
+            {'x': np.array([0.97627008]), 'y': np.array([4.30378733])},
+            {'x': np.array([2.05526752]), 'y': np.array([0.89766366])},
+            {'x': np.array([-1.52690401]), 'y': np.array([2.91788226])},
+            {'x': np.array([-1.24825577]), 'y': np.array([7.83546002])},
+            {'x': np.array([9.27325521]), 'y': np.array([-2.33116962])},
+        ]
+
+        cr = om.CaseReader(prob.get_outputs_dir() / "cases.sql")
+        cases = cr.list_cases('driver', out_stream=None)
+
+        self.assertEqual(len(cases), 5)
+
+        for case, expected_case in zip(cases, expected):
+            outputs = cr.get_case(case).outputs
+            for name in ('x', 'y'):
+                assert_near_equal(outputs[name], expected_case[name], 1e-4)
+
+
+class TestPyDOE3Errors(unittest.TestCase):
 
     @unittest.skipIf(pyDOE3, "only runs if 'pyDOE3' is not installed")
     def test_no_pyDOE3(self):
@@ -104,7 +148,8 @@ class TestErrors(unittest.TestCase):
 
 
 @use_tempdirs
-class TestAnalysisGenerators(unittest.TestCase):
+@unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
+class TestPyDOE3Generators(unittest.TestCase):
 
     def setUp(self):
         self.NOfullfact3 = [
@@ -135,47 +180,6 @@ class TestAnalysisGenerators(unittest.TestCase):
             {'x': np.array([1.]), 'y': np.array([1.]), 'f_xy': np.array([27.00])},
         ]
 
-    def test_uniform(self):
-        prob = om.Problem()
-        model = prob.model
-
-        model.add_subsystem('comp', Paraboloid(), promotes=['*'])
-        model.set_input_defaults('x', 0.0)
-        model.set_input_defaults('y', 0.0)
-
-        factors = {
-            'x': {'lower': -10, 'upper': 10},
-            'y': {'lower': -10, 'upper': 10},
-        }
-
-        prob.driver = om.AnalysisDriver(UniformGenerator(factors, num_samples=5, seed=0))
-        prob.driver.add_response('f_xy')
-        prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
-
-        prob.setup()
-        prob.run_driver()
-        prob.cleanup()
-
-        # all values should be between -10 and 10, check expected values for seed = 0
-        expected = [
-            {'x': np.array([0.97627008]), 'y': np.array([4.30378733])},
-            {'x': np.array([2.05526752]), 'y': np.array([0.89766366])},
-            {'x': np.array([-1.52690401]), 'y': np.array([2.91788226])},
-            {'x': np.array([-1.24825577]), 'y': np.array([7.83546002])},
-            {'x': np.array([9.27325521]), 'y': np.array([-2.33116962])},
-        ]
-
-        cr = om.CaseReader(prob.get_outputs_dir() / "cases.sql")
-        cases = cr.list_cases('driver', out_stream=None)
-
-        self.assertEqual(len(cases), 5)
-
-        for case, expected_case in zip(cases, expected):
-            outputs = cr.get_case(case).outputs
-            for name in ('x', 'y'):
-                assert_near_equal(outputs[name], expected_case[name], 1e-4)
-
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_full_factorial(self):
         prob = om.Problem()
         model = prob.model
@@ -209,7 +213,6 @@ class TestAnalysisGenerators(unittest.TestCase):
             for name in ('x', 'y', 'f_xy'):
                 self.assertEqual(outputs[name], expected_case[name])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_full_factorial_factoring(self):
 
         class Digits2Num(om.ExplicitComponent):
@@ -258,7 +261,6 @@ class TestAnalysisGenerators(unittest.TestCase):
         # number of cases
         self.assertEqual(len(set(objs)), 16)
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_full_factorial_array(self):
         prob = om.Problem()
         model = prob.model
@@ -304,9 +306,8 @@ class TestAnalysisGenerators(unittest.TestCase):
             self.assertEqual(outputs['xy'][0], expected_case['xy'][0])
             self.assertEqual(outputs['xy'][1], expected_case['xy'][1])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_full_fact_dict_levels(self):
-        # Specifying levels only for one DV, the other is defaulted
+        # Specifying levels only for one factor, the other is defaulted
         prob = om.Problem()
         model = prob.model
 
@@ -349,9 +350,8 @@ class TestAnalysisGenerators(unittest.TestCase):
             self.assertEqual(outputs['y'], expected_case['y'])
             self.assertEqual(outputs['f_xy'], expected_case['f_xy'])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_generalized_subset(self):
-        # All DVs have the same number of levels
+        # All factors have the same number of levels
         prob = om.Problem()
         model = prob.model
 
@@ -387,9 +387,8 @@ class TestAnalysisGenerators(unittest.TestCase):
             for name in ('x', 'y', 'f_xy'):
                 self.assertEqual(outputs[name], expected_case[name])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_generalized_subset_dict_levels(self):
-        # Number of variables specified individually for all DVs (scalars).
+        # Number of levels specified individually for all factors (scalars).
         prob = om.Problem()
         model = prob.model
 
@@ -433,9 +432,8 @@ class TestAnalysisGenerators(unittest.TestCase):
                 self.assertAlmostEqual(outputs[name][0], expected_case[name][0])
             self.assertAlmostEqual(outputs['f_xy'], expected_case['f_xy'])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_generalized_subset_array(self):
-        # Number of levels specified individually for all DVs (arrays).
+        # Number of levels specified individually for all factors (arrays).
 
         class Digits2Num(om.ExplicitComponent):
             """
@@ -482,7 +480,6 @@ class TestAnalysisGenerators(unittest.TestCase):
         # Testing uniqueness. If all elements are unique, it should be the same length as the number of cases
         self.assertEqual(len(set(objs)), 104)
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_plackett_burman(self):
         prob = om.Problem()
         model = prob.model
@@ -521,7 +518,6 @@ class TestAnalysisGenerators(unittest.TestCase):
             for name in ('x', 'y', 'f_xy'):
                 self.assertEqual(outputs[name], expected_case[name])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_box_behnken(self):
         upper = 10.
         center = 1
@@ -604,7 +600,6 @@ class TestAnalysisGenerators(unittest.TestCase):
             for name in ('x', 'y', 'z'):
                 self.assertEqual(outputs[name], expected_case[name])
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_latin_hypercube(self):
         samples = 4
 
@@ -627,7 +622,8 @@ class TestAnalysisGenerators(unittest.TestCase):
             'y': {'lower': ylb, 'upper': yub}
         }
 
-        prob.driver = om.AnalysisDriver(LHSGenerator(factors, samples=4, seed=0))
+        prob.driver = om.AnalysisDriver(LatinHypercubeGenerator(factors, samples=4, seed=0))
+        # prob.driver = om.AnalysisDriver(LHSGenerator(factors, samples=4, seed=0))
         prob.driver.add_response('f_xy')
 
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
@@ -678,7 +674,6 @@ class TestAnalysisGenerators(unittest.TestCase):
         self.assertEqual(x_buckets_filled, all_buckets)
         self.assertEqual(y_buckets_filled, all_buckets)
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_latin_hypercube_array(self):
         samples = 4
 
@@ -749,7 +744,6 @@ class TestAnalysisGenerators(unittest.TestCase):
         self.assertEqual(x_buckets_filled, all_buckets)
         self.assertEqual(y_buckets_filled, all_buckets)
 
-    @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_latin_hypercube_center(self):
         samples = 4
         upper = 10.

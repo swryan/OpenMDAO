@@ -118,7 +118,7 @@ class _pyDOE3_Generator(AnalysisGenerator):
 
         row = 0
         for name, meta in factors.items():
-            size = self._sizes(name)
+            size = self._sizes[name]
 
             try:
                 for k in range(size):
@@ -441,30 +441,30 @@ class LatinHypercubeGenerator(AnalysisGenerator):
 
         # construct iterator for doe values
         # rows = vars (# rows/var = var size), cols = levels
-        retvals = []
-        for row in doe:
-            retval = []
-            col = 0
-            for name, meta in factors.items():
-                size = _get_size(name, meta)
-                sample = row[col:col + size]
+        def generator():
+            for row in doe:
+                retval = []
+                col = 0
+                for name, meta in factors.items():
+                    size = _get_size(name, meta)
+                    sample = row[col:col + size]
 
-                lower = meta['lower']
-                if not isinstance(lower, np.ndarray):
-                    lower = lower * np.ones(size)
+                    lower = meta['lower']
+                    if not isinstance(lower, np.ndarray):
+                        lower = lower * np.ones(size)
 
-                upper = meta['upper']
-                if not isinstance(upper, np.ndarray):
-                    upper = upper * np.ones(size)
+                    upper = meta['upper']
+                    if not isinstance(upper, np.ndarray):
+                        upper = upper * np.ones(size)
 
-                val = lower + sample * (upper - lower)
+                    val = lower + sample * (upper - lower)
 
-                retval.append(val)
-                col += size
+                    retval.append(val)
+                    col += size
 
-            retvals.append(retval)
+                yield retval
 
-        self._iter = iter(retvals)
+        self._iter = iter(generator())
 
 
 # please implement a latin hypercube design of experiments using a python generator
@@ -653,7 +653,7 @@ class LHSGenerator(AnalysisGenerator):
 
 
 
-class ProhgressiveLHSGenerator(AnalysisGenerator):
+class ProgressiveLHSGenerator(AnalysisGenerator):
     """
     DOE case generator implementing the Progressive Latin Hypercube Sampling method.
 
@@ -700,13 +700,13 @@ class ProhgressiveLHSGenerator(AnalysisGenerator):
             samples += new_samples
         return samples[:num_samples]
 
-    # Example usage
-    num_samples = 10
-    num_variables = 3
-    num_iterations = 3
+    # # Example usage
+    # num_samples = 10
+    # num_variables = 3
+    # num_iterations = 3
 
-    lhs_samples = progressive_lhs(num_samples, num_variables, num_iterations)
-    print(lhs_samples)
+    # lhs_samples = progressive_lhs(num_samples, num_variables, num_iterations)
+    # print(lhs_samples)
 
 
 def _get_size(name, dct):
