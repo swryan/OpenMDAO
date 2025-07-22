@@ -1,5 +1,5 @@
 """
-Uniform and DOE generators for Analysis Driver.
+Latin Hypercube generator for Analysis Driver.
 """
 import numpy as np
 
@@ -240,13 +240,12 @@ class ProhgressiveLHSGenerator(AnalysisGenerator):
             samples += new_samples
         return samples[:num_samples]
 
-    # Example usage
-    num_samples = 10
-    num_variables = 3
-    num_iterations = 3
-
-    lhs_samples = progressive_lhs(num_samples, num_variables, num_iterations)
-    print(lhs_samples)
+    # # Example usage
+    # num_samples = 10
+    # num_variables = 3
+    # num_iterations = 3
+    # lhs_samples = progressive_lhs(num_samples, num_variables, num_iterations)
+    # print(lhs_samples)
 
 
 def _get_size(name, dct):
