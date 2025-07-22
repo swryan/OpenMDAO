@@ -1,8 +1,17 @@
+"""
+Utility functions for sampling generators.
+"""
+
 import numpy as np
+
 
 def _get_size(name, dct):
     """
     Get the size of a variable from its metadata dictionary.
+
+    This relies on the presence of 'lower' and 'upper' keys in the metadata dictionary to
+    determine the size of the variable. Both 'lower' and 'upper' must be present to determine
+    the levels anyway, and they must have the same size.
 
     Parameters
     ----------
