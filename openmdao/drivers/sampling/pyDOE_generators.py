@@ -81,7 +81,9 @@ class _pyDOE_AnalysisGenerator(AnalysisGenerator):
             return levels.get(name, levels.get("default", _LEVELS))
 
     def _get_all_levels(self):
-        """Return the levels of all factors."""
+        """
+        Return the levels of all factors.
+        """
         sizes = self._sizes
         if isinstance(self._levels, int):  # All have the same number of levels
             return [self._levels] * sum(self._sizes.values())
