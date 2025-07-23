@@ -14,9 +14,9 @@ from openmdao.test_suite.components.paraboloid import Paraboloid
 from openmdao.utils.assert_utils import assert_near_equal
 from openmdao.utils.testing_utils import use_tempdirs
 
-from openmdao.drivers.sampling.pyDOE_generators import FullFactorialAnalysisGenerator, \
-    GeneralizedSubsetAnalysisGenerator, PlackettBurmanAnalysisGenerator, \
-    BoxBehnkenAnalysisGenerator, LatinHypercubeAnalysisGenerator
+from openmdao.drivers.sampling.pyDOE_generators import FullFactorialGenerator, \
+    GeneralizedSubsetGenerator, PlackettBurmanGenerator, \
+    BoxBehnkenGenerator, LatinHypercubeGenerator
 
 
 try:
@@ -50,19 +50,19 @@ class TestPyDOEErrors(unittest.TestCase):
     @unittest.skipIf(pyDOE3, "only runs if 'pyDOE3' is not installed")
     def test_no_pyDOE3(self):
         with self.assertRaises(RuntimeError) as err:
-            FullFactorialAnalysisGenerator(var_dict={}, levels=3)
+            FullFactorialGenerator(var_dict={}, levels=3)
 
         self.assertEqual(str(err.exception),
-                         "FullFactorialAnalysisGenerator requires the 'pyDOE3' package, "
+                         "FullFactorialGenerator requires the 'pyDOE3' package, "
                          "which can be installed with one of the following commands:\n"
                          "    pip install openmdao[doe]\n"
                          "    pip install pyDOE3")
 
         with self.assertRaises(RuntimeError) as err:
-            om.AnalysisDriver(samples=FullFactorialAnalysisGenerator(var_dict={}, levels=3))
+            om.AnalysisDriver(samples=FullFactorialGenerator(var_dict={}, levels=3))
 
         self.assertEqual(str(err.exception),
-                         "FullFactorialAnalysisGenerator requires the 'pyDOE3' package, "
+                         "FullFactorialGenerator requires the 'pyDOE3' package, "
                          "which can be installed with one of the following commands:\n"
                          "    pip install openmdao[doe]\n"
                          "    pip install pyDOE3")
@@ -70,10 +70,10 @@ class TestPyDOEErrors(unittest.TestCase):
     @unittest.skipUnless(pyDOE3, "requires 'pyDOE3', pip install openmdao[doe]")
     def test_lhc_criterion(self):
         with self.assertRaises(ValueError) as err:
-            LatinHypercubeAnalysisGenerator(var_dict={}, criterion='foo')
+            LatinHypercubeGenerator(var_dict={}, criterion='foo')
 
         self.assertEqual(str(err.exception),
-                         "Invalid criterion 'foo' specified for LatinHypercubeAnalysisGenerator. "
+                         "Invalid criterion 'foo' specified for LatinHypercubeGenerator. "
                          "Must be one of ['center', 'c', 'maximin', 'm', 'centermaximin', "
                          "'cm', 'correlation', 'corr', None].")
 
@@ -83,7 +83,7 @@ class TestPyDOEErrors(unittest.TestCase):
             factors = {
                 'x': {'upper': 1.0},
             }
-            FullFactorialAnalysisGenerator(factors, levels=3)
+            FullFactorialGenerator(factors, levels=3)
 
         self.assertEqual(str(err.exception),
                          "Unable to determine levels for factor 'x'. Factors dictionary must "
@@ -95,7 +95,7 @@ class TestPyDOEErrors(unittest.TestCase):
             factors = {
                 'x': {'lower': 0.0, 'upper': np.array([1.0, 2.0, 3.0])},
             }
-            FullFactorialAnalysisGenerator(factors, levels=3)
+            FullFactorialGenerator(factors, levels=3)
 
         self.assertEqual(str(err.exception),
                          "Size mismatch for factor 'x': "
@@ -148,7 +148,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': 0.0, 'upper': 1.0}
         }
 
-        prob.driver = om.AnalysisDriver(samples=FullFactorialAnalysisGenerator(factors, levels=3))
+        prob.driver = om.AnalysisDriver(samples=FullFactorialGenerator(factors, levels=3))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -198,7 +198,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': np.array([0., 0.]), 'upper': np.array([3.0, 4.0])}
         }
 
-        prob.driver = om.AnalysisDriver(samples=FullFactorialAnalysisGenerator(factors, levels=2))
+        prob.driver = om.AnalysisDriver(samples=FullFactorialGenerator(factors, levels=2))
         prob.driver.add_response('f')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -229,7 +229,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'xy': {'lower': np.array([-10., -50.]), 'upper': np.array([10., 50.])},
         }
 
-        prob.driver = om.AnalysisDriver(FullFactorialAnalysisGenerator(factors, levels=3))
+        prob.driver = om.AnalysisDriver(FullFactorialGenerator(factors, levels=3))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -286,7 +286,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': 0.0, 'upper': 1.0}
         }
 
-        prob.driver = om.AnalysisDriver(samples=FullFactorialAnalysisGenerator(factors, levels={"y": 3}))
+        prob.driver = om.AnalysisDriver(samples=FullFactorialGenerator(factors, levels={"y": 3}))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -319,7 +319,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': 0.0, 'upper': 1.0}
         }
 
-        prob.driver = om.AnalysisDriver(GeneralizedSubsetAnalysisGenerator(factors, levels=2, reduction=2))
+        prob.driver = om.AnalysisDriver(GeneralizedSubsetGenerator(factors, levels=2, reduction=2))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -356,7 +356,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': 0.0, 'upper': 1.0}
         }
 
-        prob.driver = om.AnalysisDriver(GeneralizedSubsetAnalysisGenerator(factors, levels={'x': 3, 'y': 6}, reduction=2))
+        prob.driver = om.AnalysisDriver(GeneralizedSubsetGenerator(factors, levels={'x': 3, 'y': 6}, reduction=2))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -418,7 +418,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': np.array([0., 0.]), 'upper': np.array([3.0, 4.0])}
         }
 
-        prob.driver = om.AnalysisDriver(GeneralizedSubsetAnalysisGenerator(factors, levels={'x': 5, 'y': 8}, reduction=14))
+        prob.driver = om.AnalysisDriver(GeneralizedSubsetGenerator(factors, levels={'x': 5, 'y': 8}, reduction=14))
         prob.driver.add_response('f')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -448,7 +448,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': 0.0, 'upper': 1.0}
         }
 
-        prob.driver = om.AnalysisDriver(PlackettBurmanAnalysisGenerator(factors))
+        prob.driver = om.AnalysisDriver(PlackettBurmanGenerator(factors))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -492,7 +492,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': 0.0, 'upper': upper},
             'z': {'lower': 0.0, 'upper': upper}
         }
-        prob.driver = om.AnalysisDriver(BoxBehnkenAnalysisGenerator(factors, center=center))
+        prob.driver = om.AnalysisDriver(BoxBehnkenGenerator(factors, center=center))
         prob.driver.add_response('a')
 
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
@@ -577,8 +577,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'y': {'lower': ylb, 'upper': yub}
         }
 
-        prob.driver = om.AnalysisDriver(LatinHypercubeAnalysisGenerator(factors, samples=4, seed=0))
-        # prob.driver = om.AnalysisDriver(LHSGenerator(factors, samples=4, seed=0))
+        prob.driver = om.AnalysisDriver(LatinHypercubeGenerator(factors, samples=4, seed=0))
         prob.driver.add_response('f_xy')
 
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
@@ -647,7 +646,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'xy': {'lower': bounds[0], 'upper': bounds[1]},
         }
 
-        prob.driver = om.AnalysisDriver(LatinHypercubeAnalysisGenerator(factors, samples=4, seed=0))
+        prob.driver = om.AnalysisDriver(LatinHypercubeGenerator(factors, samples=4, seed=0))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
@@ -720,7 +719,7 @@ class TestPyDOEGenerators(unittest.TestCase):
             'indep.y': {'lower': 0.0, 'upper': upper}
         }
 
-        prob.driver = om.AnalysisDriver(LatinHypercubeAnalysisGenerator(factors, samples=samples, criterion='c'))
+        prob.driver = om.AnalysisDriver(LatinHypercubeGenerator(factors, samples=samples, criterion='c'))
         prob.driver.add_response('comp.f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
         prob.driver.recording_options['includes'] = ['indep.x', 'indep.y']

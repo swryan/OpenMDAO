@@ -7,7 +7,7 @@ from openmdao.drivers.analysis_generator import AnalysisGenerator
 from openmdao.drivers.sampling.sampling_util import _get_size
 
 
-class UniformAnalysisGenerator(AnalysisGenerator):
+class UniformGenerator(AnalysisGenerator):
     """
     DOE case generator implementing the Uniform method.
 

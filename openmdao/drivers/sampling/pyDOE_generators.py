@@ -15,7 +15,7 @@ except ImportError:
 _LEVELS = 2  # default number of levels for pyDOE generators
 
 
-class _pyDOE3_AnalysisGenerator(AnalysisGenerator):
+class _pyDOE_AnalysisGenerator(AnalysisGenerator):
     """
     Base class for DOE generators implementing methods from pyDOE3.
 
@@ -42,7 +42,7 @@ class _pyDOE3_AnalysisGenerator(AnalysisGenerator):
 
     def __init__(self, var_dict, levels=_LEVELS):
         """
-        Initialize the _pyDOE3_AnalysisGenerator.
+        Initialize the _pyDOE_AnalysisGenerator.
         """
         if pyDOE3 is None:
             raise RuntimeError(f"{self.__class__.__name__} requires the 'pyDOE3' package, "
@@ -172,7 +172,7 @@ class _pyDOE3_AnalysisGenerator(AnalysisGenerator):
         pass
 
 
-class FullFactorialAnalysisGenerator(_pyDOE3_AnalysisGenerator):
+class FullFactorialGenerator(_pyDOE_AnalysisGenerator):
     """
     DOE case generator implementing the Full Factorial method.
 
@@ -207,7 +207,7 @@ class FullFactorialAnalysisGenerator(_pyDOE3_AnalysisGenerator):
         return pyDOE3.fullfact(self._get_all_levels())
 
 
-class GeneralizedSubsetAnalysisGenerator(_pyDOE3_AnalysisGenerator):
+class GeneralizedSubsetGenerator(_pyDOE_AnalysisGenerator):
     """
     DOE case generator implementing the General Subset Design Factorial method.
 
@@ -267,7 +267,7 @@ class GeneralizedSubsetAnalysisGenerator(_pyDOE3_AnalysisGenerator):
         return pyDOE3.gsd(levels=self._get_all_levels(), reduction=self._reduction, n=self._n)
 
 
-class PlackettBurmanAnalysisGenerator(_pyDOE3_AnalysisGenerator):
+class PlackettBurmanGenerator(_pyDOE_AnalysisGenerator):
     """
     DOE case generator implementing the Plackett-Burman method.
 
@@ -307,7 +307,7 @@ class PlackettBurmanAnalysisGenerator(_pyDOE3_AnalysisGenerator):
         return doe
 
 
-class BoxBehnkenAnalysisGenerator(_pyDOE3_AnalysisGenerator):
+class BoxBehnkenGenerator(_pyDOE_AnalysisGenerator):
     """
     DOE case generator implementing the Box-Behnken method.
 
@@ -356,7 +356,7 @@ class BoxBehnkenAnalysisGenerator(_pyDOE3_AnalysisGenerator):
         return doe + 1  # replace [-1, 0, 1] with [0, 1, 2]
 
 
-class LatinHypercubeAnalysisGenerator(AnalysisGenerator):
+class LatinHypercubeGenerator(AnalysisGenerator):
     """
     DOE case generator implementing Latin hypercube method via pyDOE3.
 

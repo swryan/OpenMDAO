@@ -12,7 +12,7 @@ from openmdao.test_suite.components.paraboloid import Paraboloid
 from openmdao.utils.assert_utils import assert_near_equal
 from openmdao.utils.testing_utils import use_tempdirs
 
-from openmdao.drivers.sampling.uniform_generator import UniformAnalysisGenerator
+from openmdao.drivers.sampling.uniform_generator import UniformGenerator
 
 
 class ParaboloidArray(om.ExplicitComponent):
@@ -51,7 +51,7 @@ class TestUniformGenerator(unittest.TestCase):
             'y': {'lower': -10, 'upper': 10},
         }
 
-        prob.driver = om.AnalysisDriver(UniformAnalysisGenerator(factors, num_samples=5, seed=0))
+        prob.driver = om.AnalysisDriver(UniformGenerator(factors, num_samples=5, seed=0))
         prob.driver.add_response('f_xy')
         prob.driver.add_recorder(om.SqliteRecorder("cases.sql"))
 
