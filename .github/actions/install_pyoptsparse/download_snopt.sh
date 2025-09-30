@@ -33,7 +33,7 @@ else
         ls SNOPT
     elif [[ -n "$SNOPT_LOCATION" ]]; then
         echo "Downloading SNOPT version $SNOPT_VERSION from SNOPT_LOCATION ..."
-        scp -v -qr $SNOPT_LOCATION SNOPT
+        scp -v -qr $SNOPT_LOCATION .
         ls SNOPT
     else
         echo "SNOPT location not found for SNOPT version $SNOPT_VERSION, skipping download."
