@@ -87,7 +87,7 @@ runs:
         DOCS_LOCATION: ${{ inputs.SECRET_docs_location }}
       shell: bash -l {0}
       run: |
-        if [[ "${DOCS_LOCATION}" ]]; then
+        if [[ "${#DOCS_LOCATION}" ]]; then
           echo "============================================================="
           echo "Create env with openssl compatible with hosting service"
           echo "============================================================="
