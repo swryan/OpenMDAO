@@ -186,15 +186,13 @@ runs:
           BRANCH="-b v${{ inputs.pyoptsparse_version }}"
         fi
 
-        if [[ "$SNOPT_VERSION" == "7.7" && -n "$SNOPT_LOCATION_77" ]]; then
+        if [[ "$SNOPT_VERSION" == "7.7" ]]; then
           echo "  > Secure copying SNOPT 7.7 over SSH"
-          mkdir SNOPT
-          scp -qr "$SNOPT_LOCATION_77" SNOPT
+          .github/actions/install_pyoptsparse/download_snopt.sh
           SNOPT="-s SNOPT/src"
-        elif [[ "$SNOPT_VERSION" == "7.2" && -n "$SNOPT_LOCATION_72" ]]; then
+        elif [[ "$SNOPT_VERSION" == "7.2" ]]; then
           echo "  > Secure copying SNOPT 7.2 over SSH"
-          mkdir SNOPT
-          scp -qr "$SNOPT_LOCATION_72" SNOPT
+          .github/actions/install_pyoptsparse/download_snopt.sh
           ls -lR SNOPT
           SNOPT="-s SNOPT/source"
         elif [[ "$SNOPT_VERSION" ]]; then
