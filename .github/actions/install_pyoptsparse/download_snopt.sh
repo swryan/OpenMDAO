@@ -20,20 +20,20 @@ fi
 mkdir SNOPT
 if [[ "$SNOPT_VERSION" == "7.2" ]]; then
     if [[ -n "$SNOPT_LOCATION_72" ]]; then
-        echo "Downloading SNOPT version $SNOPT_VERSION from $SNOPT_LOCATION_72 ..."
-        scp -qr $SNOPT_LOCATION_72 SNOPT
+        echo "Downloading SNOPT version $SNOPT_VERSION from SNOPT_LOCATION_72 ..."
+        scp -v -qr $SNOPT_LOCATION_72 SNOPT
         ls SNOPT
     else
         echo "SNOPT location not found for SNOPT version $SNOPT_VERSION, skipping download."
     fi
 else
     if [[ -n "$SNOPT_LOCATION_77" ]]; then
-        echo "Downloading SNOPT version $SNOPT_VERSION from $SNOPT_LOCATION_77 ..."
-        scp -qr $SNOPT_LOCATION_77 SNOPT
+        echo "Downloading SNOPT version $SNOPT_VERSION from SNOPT_LOCATION_77 ..."
+        scp -v -qr $SNOPT_LOCATION_77 SNOPT
         ls SNOPT
     elif [[ -n "$SNOPT_LOCATION" ]]; then
-        echo "Downloading SNOPT version $SNOPT_VERSION from $SNOPT_LOCATION ..."
-        scp -qr $SNOPT_LOCATION SNOPT
+        echo "Downloading SNOPT version $SNOPT_VERSION from SNOPT_LOCATION ..."
+        scp -v -qr $SNOPT_LOCATION SNOPT
         ls SNOPT
     else
         echo "SNOPT location not found for SNOPT version $SNOPT_VERSION, skipping download."
