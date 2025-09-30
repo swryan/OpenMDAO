@@ -93,11 +93,12 @@ runs:
         echo "============================================================="
         echo "Build SNOPT library"
         echo "============================================================="
-        if [[ -n "$SNOPT_LOCATION" && "$SNOPT_VERSION" == "7.7" ]]; then
+        if [[ -n "$SNOPT_VERSION" ]]; then
           echo "-------------------------------------------------------------"
           echo "Getting SNOPT source"
           echo "-------------------------------------------------------------"
-          scp -qr "$SNOPT_LOCATION" .
+          .github/actions/install_pyoptsparse/download_snopt.sh
+
         elif [[ "${{ inputs.snopt_version }}" ]]; then
           echo "SNOPT version ${{ inputs.snopt_version }} was requested but source is not available"
         fi
@@ -207,4 +208,3 @@ runs:
       shell: bash -l {0}
       run: |
         python -c "import pyoptsparse; from pyoptsparse import SLSQP; SLSQP()" && echo "pyOptSparse OK" || echo "pyOptSparse FAILED"
-
